@@ -9,3 +9,6 @@ CLAUDE.md
 __pycache__/
 *.pyc
 native-host/__pycache__/
+
+# Playwright MCP scratch (screenshots, snapshots, console logs)
+.playwright-mcp/
