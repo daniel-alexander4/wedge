@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>wedge</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Load-error banner (shown if the backend can't be reached) -->
+    <div id="load-error" class="load-error" hidden></div>
+
+    <!-- Settings View -->
+    <div class="view active" id="view-settings">
+      <div class="wrap">
+        <h1>wedge</h1>
+
+        <div id="setup-checklist" class="checklist" hidden>
+          <div class="checklist-item" id="check-key">
+            <span class="check-icon" id="check-key-icon"></span>
+            <span id="check-key-label">SSH key</span>
+          </div>
+          <div class="checklist-item" id="check-origins">
+            <span class="check-icon" id="check-origins-icon"></span>
+            <span id="check-origins-label">Target systems</span>
+          </div>
+          <div class="checklist-item" id="check-server">
+            <span class="check-icon" id="check-server-icon"></span>
+            <span id="check-server-label">Backend</span>
+          </div>
+        </div>
+
+        <div id="no-origins-warning" class="warning-box" hidden>
+          No target systems configured. wedge cannot sign challenges until at least one target system is added below.
+        </div>
+
+        <div class="row">
+          <span>Signing enabled</span>
+          <button id="toggle-enabled" aria-pressed="true">On</button>
+        </div>
+        <div class="field">
+          <label for="key-path">SSH key path</label>
+          <div class="tabs" role="tablist" aria-label="Key type">
+            <button class="tab-btn" type="button" data-key-type="ed25519" aria-pressed="true">Ed25519</button>
+            <button class="tab-btn" type="button" data-key-type="rsa" aria-pressed="false">RSA</button>
+            <button class="tab-btn" type="button" data-key-type="ecdsa" aria-pressed="false">ECDSA</button>
+          </div>
+          <input id="key-path" type="text" placeholder="~/.ssh/id_ed25519" />
+        </div>
+        <div class="field">
+          <label>Target systems</label>
+          <div id="origin-rows"></div>
+          <button id="add-origin-row" class="secondary" type="button">+ Add target</button>
+          <div id="origin-row-errors" class="field-error" hidden></div>
+        </div>
+        <div class="field">
+          <label for="server-port">Backend port</label>
+          <input id="server-port" type="number" min="1024" max="65535" placeholder="7890" />
+        </div>
+        <div class="actions">
+          <button id="save-config">Save</button>
+          <button id="verify-setup" class="secondary">Verify Setup</button>
+          <button id="open-signlog" class="secondary" type="button">Sign log</button>
+        </div>
+        <div class="status" id="status" hidden></div>
+      </div>
+    </div>
+
+    <!-- Sign-log View -->
+    <div class="view" id="view-signlog">
+      <div class="wrap">
+        <h1>Sign log</h1>
+        <table class="signlog-table">
+          <thead>
+            <tr><th>Time</th><th>Origin</th><th>Namespace</th><th>Approved via</th></tr>
+          </thead>
+          <tbody id="signlog-body"></tbody>
+        </table>
+        <div id="signlog-empty" class="signlog-empty" hidden>No signatures yet.</div>
+        <div class="actions">
+          <button id="signlog-back" class="secondary" type="button">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onboarding View -->
+    <div class="view" id="view-onboarding">
+      <div class="wrap onboarding-wrap">
+        <h1>Welcome to wedge</h1>
+        <p class="subtitle">Complete these steps to get started.</p>
+
+        <div class="steps">
+          <!-- Step 1: SSH Key -->
+          <div class="step active" id="step-1">
+            <div class="step-header">
+              <span class="step-number">1</span>
+              <span class="step-title">Configure SSH Key</span>
+              <span class="step-status" id="step-1-status"></span>
+            </div>
+            <div class="step-body">
+              <p>Select your SSH key type or enter a custom path:</p>
+              <div class="tabs" role="tablist" aria-label="Key type">
+                <button class="tab-btn" type="button" data-key-type="ed25519" data-onboarding aria-pressed="true">Ed25519</button>
+                <button class="tab-btn" type="button" data-key-type="rsa" data-onboarding aria-pressed="false">RSA</button>
+                <button class="tab-btn" type="button" data-key-type="ecdsa" data-onboarding aria-pressed="false">ECDSA</button>
+              </div>
+              <input id="onboarding-key-path" type="text" placeholder="~/.ssh/id_ed25519" value="~/.ssh/id_ed25519" />
+              <div class="step-actions">
+                <button id="validate-key-btn" type="button">Validate Key</button>
+              </div>
+              <div id="key-result" class="step-result" hidden></div>
+            </div>
+          </div>
+
+          <!-- Step 2: Target Systems -->
+          <div class="step" id="step-2">
+            <div class="step-header">
+              <span class="step-number">2</span>
+              <span class="step-title">Add Target Systems</span>
+              <span class="step-status" id="step-2-status"></span>
+            </div>
+            <div class="step-body">
+              <p>Add each target system that uses SSH login. Enter the host, optional port, and namespace.</p>
+              <div id="onboarding-origin-rows"></div>
+              <button id="onboarding-add-origin-row" class="secondary" type="button">+ Add target</button>
+              <div id="onboarding-origin-row-errors" class="field-error" hidden></div>
+            </div>
+          </div>
+
+          <!-- Step 3: Ready -->
+          <div class="step" id="step-3">
+            <div class="step-header">
+              <span class="step-number">3</span>
+              <span class="step-title">Ready</span>
+              <span class="step-status" id="step-3-status"></span>
+            </div>
+            <div class="step-body">
+              <p>You're all set. wedge is ready to sign login requests from your configured target systems.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="final-actions">
+          <button id="save-and-finish" type="button">Save &amp; Finish</button>
+        </div>
+        <div class="status" id="onboarding-status" hidden></div>
+      </div>
+    </div>
+
+    <!-- Consent Overlay (Phase 2 — inert for now) -->
+    <div class="consent-overlay" id="consent-overlay" hidden>
+      <div class="consent-dialog">
+        <h2 id="consent-title">Sign request</h2>
+        <p id="consent-minimal-line" class="consent-minimal-line" hidden></p>
+        <div class="consent-fields" id="consent-detail">
+          <div class="consent-field">
+            <label>Origin</label>
+            <span id="consent-origin"></span>
+          </div>
+          <div class="consent-field">
+            <label>Namespace</label>
+            <span id="consent-namespace"></span>
+          </div>
+          <div class="consent-field" id="consent-company-row">
+            <label>Company</label>
+            <span id="consent-company"></span>
+          </div>
+          <div class="consent-field">
+            <label>Challenge</label>
+            <span id="consent-challenge" class="challenge-preview"></span>
+          </div>
+        </div>
+        <div class="consent-actions">
+          <button id="consent-allow">Allow once</button>
+          <button id="consent-allow-always" class="secondary">Always allow</button>
+          <button id="consent-deny" class="secondary">Deny</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="main.js"></script>
+    <script src="settings.js"></script>
+    <script src="onboarding.js"></script>
+    <script src="signlog.js"></script>
+    <script src="consent.js"></script>
+  </body>
+</html>

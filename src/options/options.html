@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSHKey Web Auth Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SSHKey Web Auth Settings</h1>
+
+      <div id="setup-checklist" class="checklist" hidden>
+        <div class="checklist-item" id="check-native">
+          <span class="check-icon" id="check-native-icon"></span>
+          <span id="check-native-label">Native host</span>
+        </div>
+        <div class="checklist-item" id="check-key">
+          <span class="check-icon" id="check-key-icon"></span>
+          <span id="check-key-label">SSH key</span>
+        </div>
+        <div class="checklist-item" id="check-origins">
+          <span class="check-icon" id="check-origins-icon"></span>
+          <span id="check-origins-label">Target systems</span>
+        </div>
+      </div>
+
+      <div id="native-help" class="help-box" hidden>
+        <div id="native-status-line"></div>
+        <div class="help-details" id="help-details">
+          <p>Extension ID: <code id="ext-id"></code></p>
+          <p>Run this to install the native host:</p>
+          <pre id="install-cmd"></pre>
+          <button id="copy-cmd" class="secondary" type="button">Copy</button>
+        </div>
+      </div>
+
+      <div id="no-origins-warning" class="warning-box" hidden>
+        No target systems configured. The extension cannot sign challenges until at least one target system is added below.
+      </div>
+
+      <div class="row">
+        <span>Extension enabled</span>
+        <button id="toggle-enabled" aria-pressed="true">On</button>
+      </div>
+      <div class="field">
+        <label for="key-path">SSH private key path</label>
+        <div class="tabs" role="tablist" aria-label="Key type">
+          <button class="tab-btn" type="button" data-key-type="ed25519" aria-pressed="true">Ed25519</button>
+          <button class="tab-btn" type="button" data-key-type="rsa" aria-pressed="false">RSA</button>
+          <button class="tab-btn" type="button" data-key-type="ecdsa" aria-pressed="false">ECDSA</button>
+        </div>
+        <input id="key-path" type="text" placeholder="~/.ssh/id_ed25519" />
+      </div>
+      <div class="field">
+        <label>Target systems</label>
+        <div id="origin-rows"></div>
+        <button id="add-origin-row" class="secondary" type="button">+ Add target</button>
+        <div id="origin-row-errors" class="field-error" hidden></div>
+      </div>
+      <div class="actions">
+        <button id="save-config">Save</button>
+        <button id="verify-setup" class="secondary">Verify Setup</button>
+      </div>
+      <div class="status" id="status" hidden></div>
+    </div>
+    <script src="options.js"></script>
+  </body>
+</html>

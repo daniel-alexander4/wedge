@@ -1,0 +1,30 @@
+{
+  "name": "sshkey-web-auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-browser SSH authentication extension scaffold",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build:chrome": "node scripts/build.mjs --target=chrome",
+    "build:firefox": "node scripts/build.mjs --target=firefox",
+    "build:all": "node scripts/build.mjs --target=all",
+    "dev:chrome": "node scripts/build.mjs --target=chrome --watch",
+    "dev:firefox": "node scripts/build.mjs --target=firefox --watch",
+    "typecheck": "tsc --noEmit",
+    "test:background": "node scripts/test-background.mjs",
+    "test:native": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test": "npm run test:background && npm run test:native",
+    "setup": "./setup.sh"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.299",
+    "@types/firefox-webext-browser": "^120.0.4",
+    "esbuild": "^0.25.1",
+    "typescript": "^5.8.2",
+    "@types/webextension-polyfill": "^0.12.3"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  }
+}

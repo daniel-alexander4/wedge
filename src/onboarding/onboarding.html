@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SSHKey Web Auth — Setup</title>
+    <link rel="stylesheet" href="onboarding.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>SSHKey Web Auth Setup</h1>
+      <p class="subtitle">Complete these steps to get started.</p>
+
+      <div class="steps">
+        <!-- Step 1: Native Host -->
+        <div class="step active" id="step-1">
+          <div class="step-header">
+            <span class="step-number">1</span>
+            <span class="step-title">Install Native Host</span>
+            <span class="step-status" id="step-1-status"></span>
+          </div>
+          <div class="step-body">
+            <p>The native host allows the extension to call <code>ssh-keygen</code> on your machine.</p>
+            <p>Extension ID: <code id="ext-id"></code></p>
+            <p>Run this command in the project directory:</p>
+            <pre id="install-cmd"></pre>
+            <button id="copy-cmd" class="secondary" type="button">Copy</button>
+            <div class="step-actions">
+              <button id="check-native-btn" type="button">Check Connection</button>
+            </div>
+            <div id="native-result" class="step-result" hidden></div>
+          </div>
+        </div>
+
+        <!-- Step 2: SSH Key -->
+        <div class="step" id="step-2">
+          <div class="step-header">
+            <span class="step-number">2</span>
+            <span class="step-title">Configure SSH Key</span>
+            <span class="step-status" id="step-2-status"></span>
+          </div>
+          <div class="step-body">
+            <p>Select your SSH key type or enter a custom path:</p>
+            <div class="tabs" role="tablist" aria-label="Key type">
+              <button class="tab-btn" type="button" data-key-type="ed25519" aria-pressed="true">Ed25519</button>
+              <button class="tab-btn" type="button" data-key-type="rsa" aria-pressed="false">RSA</button>
+              <button class="tab-btn" type="button" data-key-type="ecdsa" aria-pressed="false">ECDSA</button>
+            </div>
+            <input id="key-path" type="text" placeholder="~/.ssh/id_ed25519" value="~/.ssh/id_ed25519" />
+            <div class="step-actions">
+              <button id="validate-key-btn" type="button">Validate Key</button>
+            </div>
+            <div id="key-result" class="step-result" hidden></div>
+          </div>
+        </div>
+
+        <!-- Step 3: Origin Mappings -->
+        <div class="step" id="step-3">
+          <div class="step-header">
+            <span class="step-number">3</span>
+            <span class="step-title">Add Target Systems</span>
+            <span class="step-status" id="step-3-status"></span>
+          </div>
+          <div class="step-body">
+            <p>Add each target system that uses SSH login. Enter the host, optional port, and namespace.</p>
+            <div id="origin-rows"></div>
+            <button id="add-origin-row" class="secondary" type="button">+ Add target</button>
+            <div id="origin-row-errors" class="field-error" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="final-actions">
+        <button id="save-and-finish" type="button">Save &amp; Finish</button>
+      </div>
+      <div class="status" id="status" hidden></div>
+    </div>
+    <script src="onboarding.js"></script>
+  </body>
+</html>

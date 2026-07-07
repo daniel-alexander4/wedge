@@ -1,0 +1,132 @@
+// Command wedge runs the wedge desktop app: it starts a loopback-only web
+// server for its own settings/onboarding UI and opens that UI in a chromeless
+// app-mode window.
+//
+// It is also the wedge:// protocol handler. When the OS launches `wedge
+// wedge://sign?…`, a single-instance guard forwards the link to an
+// already-running wedge (which surfaces the consent prompt in its own window);
+// if none is running, this process becomes primary and handles it.
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"time"
+
+	"wedge"
+	"wedge/internal/browser"
+	"wedge/internal/config"
+	"wedge/internal/server"
+	"wedge/internal/singleton"
+)
+
+// version is set at build time via -ldflags "-X main.version=…" (see build.sh).
+var version = "dev"
+
+func main() {
+	log.SetFlags(0)
+	log.SetPrefix("wedge: ")
+
+	if hasFlag("--version") || hasFlag("-version") {
+		log.Printf("wedge %s", version)
+		return
+	}
+
+	signURL := firstWedgeArg()
+
+	if hasFlag("--replace") {
+		if n := singleton.ReplaceOthers(); n > 0 {
+			log.Printf("replaced %d running instance(s)", n)
+		}
+	}
+
+	mgr, err := config.NewManager()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
+	srv := server.New(mgr, wedge.WebFS())
+	if err := srv.Start(); err != nil {
+		// The UI port is taken — assume a wedge is already running and attach to
+		// it instead of starting a second server.
+		port := mgr.Get().ServerPort
+		if signURL != "" {
+			if forwardHandoff(port, signURL) {
+				return
+			}
+			log.Fatalf("could not reach running wedge to hand off the link: %v", err)
+		}
+		// No link — just focus the running instance's window.
+		if os.Getenv("WEDGE_NO_BROWSER") == "" {
+			browser.Open(fmt.Sprintf("http://127.0.0.1:%d/", port))
+		}
+		return
+	}
+
+	uiURL := "http://" + srv.Addr() + "/"
+	log.Printf("wedge %s — UI at %s", version, uiURL)
+
+	if os.Getenv("WEDGE_NO_BROWSER") == "" {
+		if _, err := browser.Open(uiURL); err != nil {
+			log.Printf("could not open a browser window: %v", err)
+		}
+	}
+
+	// If we were launched to handle a link, process it now (the window we just
+	// opened will show the consent prompt via long-poll).
+	if signURL != "" {
+		srv.HandleSignURL(signURL)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	<-ctx.Done()
+	if err := srv.Stop(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Printf("shutdown: %v", err)
+	}
+}
+
+// forwardHandoff hands a wedge:// link to the running instance's loopback
+// server. Returns true on success.
+func forwardHandoff(port int, signURL string) bool {
+	body, _ := json.Marshal(map[string]string{"url": signURL})
+	url := fmt.Sprintf("http://127.0.0.1:%d/internal/handoff", port)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+func firstWedgeArg() string {
+	for _, a := range os.Args[1:] {
+		if strings.HasPrefix(a, "wedge://") {
+			return a
+		}
+	}
+	return ""
+}
+
+func hasFlag(name string) bool {
+	for _, a := range os.Args[1:] {
+		if a == name {
+			return true
+		}
+	}
+	return false
+}
