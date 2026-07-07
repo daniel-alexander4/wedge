@@ -27,7 +27,7 @@ func genKey(t *testing.T) (priv, pub string) {
 	return priv, priv + ".pub"
 }
 
-// sshVerify mimics the RP's ssh-keygen -Y verify, matching sshweb-demo.
+// sshVerify mimics the RP's ssh-keygen -Y verify, matching wedge-web.
 func sshVerify(t *testing.T, challenge, signature, namespace, pubKey string) bool {
 	t.Helper()
 	dir := t.TempDir()
