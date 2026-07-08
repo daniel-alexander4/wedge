@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"wedge/internal/protocol"
 	"wedge/internal/rp"
 	"wedge/internal/signer"
+	"wedge/internal/terminal"
 )
 
 // consentTimeout is how long a parked sign waits for the user's presence tap
@@ -217,6 +219,44 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleSSH opens a terminal running ssh against a configured ssh:// site. It
+// only launches ssh:// origins present in the sites list, and validates the
+// user/host/port strictly (terminal.ValidateSSHTarget) so a target can't inject
+// ssh options or shell metacharacters. Loopback + same-origin guarded.
+func (s *Server) handleSSH(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Origin string `json:"origin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
+		return
+	}
+	raw := strings.TrimSpace(body.Origin)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "ssh" || u.Hostname() == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not an ssh:// target"})
+		return
+	}
+	if findSite(s.configMgr.Get(), raw) == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not a configured site"})
+		return
+	}
+	user, host, port := u.User.Username(), u.Hostname(), u.Port()
+	if err := terminal.ValidateSSHTarget(user, host, port); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	if err := s.openSSH(user, host, port); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // ---- orchestration ----
 
 // HandleSignURL processes a wedge:// link asynchronously.
@@ -234,8 +274,11 @@ func (s *Server) runSign(raw string) {
 		return
 	}
 	origin := policy.NormalizeOrigin(req.Origin)
-	if origin == "" {
-		log.Printf("sign: bad origin: %s", req.Origin)
+	// Auth only ever targets http(s) origins. Rejecting other schemes here also
+	// stops a malicious wedge:// link from planting an ssh:// site via
+	// add-on-first-use for the user to later launch a terminal against.
+	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
+		log.Printf("sign: origin not http(s): %s", req.Origin)
 		return
 	}
 

@@ -23,9 +23,10 @@ import (
 	"wedge/internal/browser"
 	"wedge/internal/config"
 	"wedge/internal/keyutil"
+	"wedge/internal/terminal"
 )
 
-const Version = "0.1.2"
+const Version = "0.1.3"
 
 // signLogCap bounds the in-memory sign log so it can't grow without limit.
 const signLogCap = 500
@@ -43,6 +44,9 @@ type Server struct {
 	// openURL opens a configured site in the default browser. Defaults to
 	// browser.OpenTab; overridable in tests so they don't spawn a browser.
 	openURL func(string) error
+	// openSSH opens a terminal running ssh against a configured ssh:// site.
+	// Defaults to terminal.OpenSSH; overridable in tests.
+	openSSH func(user, host, port string) error
 }
 
 func New(configMgr *config.Manager, web fs.FS) *Server {
@@ -53,12 +57,14 @@ func New(configMgr *config.Manager, web fs.FS) *Server {
 		consent:      newConsentBroker(),
 		signableKeys: keyutil.SignableKeys,
 		openURL:      browser.OpenTab,
+		openSSH:      terminal.OpenSSH,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/enabled", s.handleEnabled)
 	mux.HandleFunc("/api/keys", s.handleKeys)
 	mux.HandleFunc("/api/open", s.handleOpen)
+	mux.HandleFunc("/api/ssh", s.handleSSH)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)
 	mux.HandleFunc("/api/pending", s.handlePending)

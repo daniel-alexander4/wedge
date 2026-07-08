@@ -159,6 +159,65 @@ func TestOpenSite(t *testing.T) {
 	}
 }
 
+func TestOpenSSH(t *testing.T) {
+	dir := t.TempDir()
+	m, err := config.NewManagerWithPath(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(func(c *config.Config) {
+		c.Sites = []config.Site{
+			{Origin: "https://acme.example"},
+			{Origin: "ssh://dan@example.com:2222"},
+			{Origin: "ssh://-oProxyCommand=calc@evil"}, // hand-edited malicious entry
+		}
+	})
+	s := New(m, fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}})
+	var got [3]string
+	called := false
+	s.openSSH = func(u, h, p string) error { got = [3]string{u, h, p}; called = true; return nil }
+
+	// A configured ssh site opens with the parsed components.
+	w := serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://dan@example.com:2222"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if !called || got != [3]string{"dan", "example.com", "2222"} {
+		t.Errorf("openSSH got %v called=%v", got, called)
+	}
+
+	// A non-configured ssh origin is rejected and never launched.
+	called = false
+	w = serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://dan@other.example"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-configured ssh site, got %d", w.Code)
+	}
+	if called {
+		t.Error("must not launch a non-configured ssh site")
+	}
+
+	// A configured-but-malicious target (option injection) is rejected at
+	// validation, never launched — the defense-in-depth check.
+	called = false
+	w = serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://-oProxyCommand=calc@evil"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for injection target, got %d", w.Code)
+	}
+	if called {
+		t.Error("must not launch an option-injection target even if configured")
+	}
+
+	// An http(s) origin sent to /api/ssh is rejected (wrong endpoint).
+	called = false
+	w = serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"https://acme.example"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for http origin on /api/ssh, got %d", w.Code)
+	}
+	if called {
+		t.Error("must not launch ssh for an http origin")
+	}
+}
+
 func TestSignLogEmpty(t *testing.T) {
 	s := testServer(t)
 	w := serve(s, loopbackReq(http.MethodGet, "/api/signlog", ""))

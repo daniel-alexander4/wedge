@@ -2,6 +2,24 @@
 
 var MAX_SITE_ROWS = 100;
 
+// normalizeSiteValue canonicalizes a site input. Returns {scheme, value} for a
+// supported entry (http(s) web origin, or an ssh:// target — note URL.origin is
+// "null" for ssh, so it's reconstructed), or null if unsupported/invalid.
+function normalizeSiteValue(raw) {
+  if (!raw) return null;
+  var u;
+  try { u = new URL(raw); } catch (e) { return null; }
+  if (u.protocol === 'http:' || u.protocol === 'https:') {
+    return { scheme: u.protocol, value: u.origin };
+  }
+  if (u.protocol === 'ssh:') {
+    if (!u.hostname) return null;
+    var v = 'ssh://' + (u.username ? u.username + '@' : '') + u.hostname + (u.port ? ':' + u.port : '');
+    return { scheme: 'ssh:', value: v };
+  }
+  return null;
+}
+
 function setStatus(text, level) {
   var el = document.getElementById('status');
   if (!el) return;
@@ -61,10 +79,10 @@ function createSiteRow(origin, alwaysAllow, silent) {
 
   var originInput = document.createElement('input');
   originInput.type = 'text';
-  originInput.placeholder = 'https://example.com';
+  originInput.placeholder = 'https://example.com  or  ssh://user@host';
   originInput.value = origin || '';
   originInput.className = 'origin-input';
-  originInput.addEventListener('input', function () { validateSiteRow(row); });
+  originInput.addEventListener('input', function () { validateSiteRow(row); updateLaunchIcon(); });
 
   var autoLabel = document.createElement('label');
   autoLabel.className = 'auto-allow';
@@ -88,24 +106,28 @@ function createSiteRow(origin, alwaysAllow, silent) {
 
   var launchBtn = document.createElement('span');
   launchBtn.className = 'launch-row-btn';
-  launchBtn.textContent = '↗';
   launchBtn.setAttribute('role', 'button');
-  launchBtn.setAttribute('aria-label', 'Open site in browser');
-  launchBtn.title = 'Open this site in your default browser';
   launchBtn.tabIndex = 0;
+  function updateLaunchIcon() {
+    var t = normalizeSiteValue(originInput.value.trim());
+    var ssh = t && t.scheme === 'ssh:';
+    launchBtn.textContent = ssh ? '⌨' : '↗';
+    var label = ssh ? 'Open an SSH terminal to this host' : 'Open this site in your default browser';
+    launchBtn.title = label;
+    launchBtn.setAttribute('aria-label', label);
+  }
   function launch() {
-    var raw = originInput.value.trim();
-    if (!raw) return;
-    var url = '';
-    try { url = new URL(raw).origin; } catch (e) { setStatus('Invalid site URL', 'error'); return; }
-    App.openSite(url)
-      .then(function () { setStatus('Opened ' + url, 'success'); })
+    var t = normalizeSiteValue(originInput.value.trim());
+    if (!t) { setStatus('Invalid site — use http(s):// or ssh://', 'error'); return; }
+    var p = t.scheme === 'ssh:' ? App.openSSH(t.value) : App.openSite(t.value);
+    p.then(function () { setStatus('Opened ' + t.value, 'success'); })
       .catch(function (err) { setStatus('Could not open: ' + (err.message || err), 'error'); });
   }
   launchBtn.addEventListener('click', launch);
   launchBtn.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); launch(); }
   });
+  updateLaunchIcon();
 
   var removeBtn = document.createElement('span');
   removeBtn.className = 'remove-row-btn';
@@ -138,8 +160,8 @@ function validateSiteRow(row) {
   var valid = true;
   var raw = originInput.value.trim();
   if (raw) {
-    try { new URL(raw); originInput.classList.remove('invalid'); }
-    catch (e) { originInput.classList.add('invalid'); valid = false; }
+    if (normalizeSiteValue(raw)) { originInput.classList.remove('invalid'); }
+    else { originInput.classList.add('invalid'); valid = false; }
   } else {
     originInput.classList.remove('invalid');
   }
@@ -167,9 +189,9 @@ function collectSites(containerId) {
     var raw = originInput.value.trim();
     if (!raw) return;
 
-    var origin = '';
-    try { origin = new URL(raw).origin; }
-    catch (e) { invalidLines.push(raw + ' — invalid URL'); return; }
+    var t = normalizeSiteValue(raw);
+    if (!t) { invalidLines.push(raw + ' — use http(s):// or ssh://'); return; }
+    var origin = t.value;
 
     if (seen[origin]) return;
     seen[origin] = true;
