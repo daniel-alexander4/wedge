@@ -142,7 +142,10 @@ The RP MUST:
 1. Look up the pending request by `request_id`; reject unknown/completed (404).
 2. Verify the signature against the challenge **it stored** for that
    request_id — never the echoed `challenge` field.
-3. Check `namespace` equals its canonical origin (400 on mismatch).
+3. Check `namespace` is equivalent (§6.1) to its canonical origin (400 on
+   mismatch). Signature verification MUST then use the posted `namespace`
+   string — it is the bytes the client signed, and under the §6.1 alias it
+   may legitimately differ from the RP's own spelling.
 4. Verify only against **registered** public keys. If the pending request
    carries a user identity, resolve that user's registered key(s). If it does
    not (keyless app-initiated start, §8), the posted `public_key` is used
@@ -174,6 +177,13 @@ and verified (reference kernel) with the challenge on stdin:
 ssh-keygen -Y verify -f <allowed_signers> -I <principal> -n <namespace> -s <sig-file>
 ```
 
+The `principal` and the first field of `allowed_signers` are an RP-internal
+pairing that never appears on the wire: the RP uses the identifier under
+which the key was registered (reference implementations: the account
+username; in a keyless flow, the username of the account the `public_key`
+selector matched) as both the `-I` value and the `allowed_signers` first
+field.
+
 The namespace binds a signature to one origin: a signature made for
 `https://a.example` cannot be replayed at any other origin (§6.1).
 
@@ -202,8 +212,12 @@ its own canonical origin. Authenticators MUST refuse to sign when the
 reported namespace, parsed as an origin, is not equivalent to the configured
 origin the flow started from. Equivalence is exact string match after
 normalization, plus the `localhost` ↔ `127.0.0.1` alias (same scheme/port).
-This is the anti-replay property of the whole protocol: every signature is
-origin-bound.
+Normalization reduces a URL to `scheme://host[:port]` — userinfo, path,
+query, and fragment are dropped; nothing else changes (no default-port
+elision, no case folding). Spellings that differ in an explicit default port
+are therefore **not** equivalent: implementations SHOULD write origins
+lowercase, with the port exactly as browsers reach the site. This is the
+anti-replay property of the whole protocol: every signature is origin-bound.
 
 ### 6.2 Formats
 
@@ -349,3 +363,7 @@ in one command.
 - Authenticator: `wedge` (Go) — this repository.
 - RP: `wedge-web` (Python, stdlib-only) — discovery, challenge/verify/status,
   app-start/claim, and the verification kernel (`ssh-keygen -Y verify`).
+- RP middleware: `wedge-rp` (Python, `sdk/python/` in this repository) —
+  pip-installable engine implementing every RP requirement of this spec,
+  with a Flask adapter and a conformance test suite; built against this
+  document as its implementability test.
