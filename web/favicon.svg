@@ -15,12 +15,16 @@
       <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/>
     </linearGradient>
   </defs>
-  <rect width="240" height="240" rx="28" fill="#0f172a"/>
   <g transform="translate(-84,-3) scale(0.6)">
-    <polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendR)" stroke-width="10" stroke-linejoin="round"/>
-    <g clip-path="url(#indClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="#6366f1" stroke-width="10" stroke-linejoin="round"/></g>
-    <g clip-path="url(#leftClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendL)" stroke-width="10" stroke-linejoin="round"/></g>
-    <polygon points="241,238 405,176 413,190" fill="#6ee7b7"/>
-    <polygon points="241,238 439,238 447,252" fill="#818cf8"/>
+    <!-- dark contrast layer -->
+    <polygon points="340,50 170,360 510,360" fill="none" stroke="#0f172a" stroke-width="24" stroke-linejoin="round"/>
+    <polygon points="238,236 408,174 416,188" fill="#0f172a" stroke="#0f172a" stroke-width="7" stroke-linejoin="round"/>
+    <polygon points="238,236 442,236 450,252" fill="#0f172a" stroke="#0f172a" stroke-width="7" stroke-linejoin="round"/>
+    <!-- colored art -->
+    <polygon points="238,236 408,174 416,188" fill="#6ee7b7"/>
+    <polygon points="238,236 442,236 450,252" fill="#818cf8"/>
+    <polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendR)" stroke-width="11" stroke-linejoin="round"/>
+    <g clip-path="url(#indClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="#6366f1" stroke-width="11" stroke-linejoin="round"/></g>
+    <g clip-path="url(#leftClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendL)" stroke-width="11" stroke-linejoin="round"/></g>
   </g>
 </svg>
