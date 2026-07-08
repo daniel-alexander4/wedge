@@ -78,14 +78,13 @@ Only `action = sign` exists in v1. Future actions (e.g. `register`) reuse the sc
 
 ## 4. RP discovery (`.well-known`)
 
-wedge learns an RP's endpoints from a discovery document, so the user configures only the **origin** (+ the namespace they expect), never raw URLs:
+wedge learns an RP's endpoints from a discovery document, so the user configures only the **origin** (the site URL), never raw URLs or a namespace:
 
 ```
 GET https://<configured-origin>/.well-known/wedge.json
 → {
     "version": 1,
-    "namespace": "acme-login",
-    "company": "acme",                       // optional
+    "namespace": "https://acme.example",     // == the RP's canonical origin
     "challenge_url": "https://acme.example/wedge/challenge",
     "verify_url":    "https://acme.example/wedge/verify"
   }
@@ -94,7 +93,7 @@ GET https://<configured-origin>/.well-known/wedge.json
 - wedge builds the discovery URL from the **configured origin**, never from the link — so a hostile link cannot redirect discovery (no SSRF).
 - `challenge_url` / `verify_url` **must** be same-origin with the configured origin; wedge rejects any that aren't. (Second SSRF guard.)
 - Cached with a short TTL; refetched on cache miss or signature-verify failure.
-- The `namespace`/`company` here must match what the user configured for the origin, or wedge refuses — the user's config is the source of truth for identity, discovery only supplies transport URLs.
+- **`namespace` must equal the configured origin** (equivalence-aware, localhost↔127.0.0.1), or wedge refuses. This makes every signature origin-bound; there is no separate namespace or company to configure.
 
 ---
 
@@ -104,9 +103,8 @@ GET https://<configured-origin>/.well-known/wedge.json
 ```
 GET <challenge_url>?request_id=<id>
 → 200 { "challenge": "<16-256 url-safe chars>",
-        "namespace": "acme-login",
-        "company": "acme",             // optional
-        "expires_at": "<RFC3339>" }
+        "namespace": "https://acme.example",   // == the RP's canonical origin
+        "expires_at": "<RFC3339>" }            // optional; wedge doesn't enforce it (RP owns expiry)
 → 404 / 410 if request_id unknown or expired
 ```
 
@@ -135,12 +133,12 @@ GET <origin>/wedge/status?request_id=<id>      (same-origin, sends the binding c
 
 ## 6. Signing & verification
 
-Unchanged from today's mechanism — wedge's `signer` package already does the sign side:
+wedge's `signer` package does the sign side, over the keys `keyutil` discovers:
 
-- **wedge signs via `ssh-agent`** (decided — see §7): `ssh-keygen -Y sign -n <namespace> -f <public-key> <challengefile>`, where `-f` names the **public** key whose private half the agent holds — so ssh-keygen signs through the agent and **the private key never enters wedge**. Challenge written to a `0600` temp file; namespace passed as an argv value (regex-constrained, no shell). (A private-key-file path stays supported as a fallback for keyless-agent setups, using today's `keyutil` permission checks.)
+- **wedge auto-discovers `~/.ssh/*.pub`** and signs with the **agent-loaded** ones, trying each in turn (**try-next**) until the RP accepts one — a failed verify doesn't consume the RP's single-use challenge, so the next key can be tried. Each sign is `ssh-keygen -Y sign -n <namespace> -f <public-key> <challengefile>`, where `-f` names the **public** key whose private half the agent holds — so ssh-keygen signs through the agent and **the private key never enters wedge**. Challenge written to a `0600` temp file; namespace passed as an argv value (no shell). Any discovered key may be used for any site.
 - **RP verifies:** `ssh-keygen -Y verify -f <allowed_signers> -I <principal> -n <namespace> -s <sigfile>` with the challenge on stdin. The RP must (a) confirm the `challenge` in the POST equals the one it issued for `request_id`, (b) verify against the user's **registered** public key for that principal — never trust the `public_key` field alone.
 
-Namespace binds a signature to its purpose: a signature made for `acme-login` cannot be replayed as `git` or another RP's namespace.
+Because `namespace == the RP's canonical origin` (§4), a signature is bound to one origin and cannot be replayed against another RP.
 
 ---
 
@@ -148,7 +146,9 @@ Namespace binds a signature to its purpose: a signature made for `acme-login` ca
 
 **Every sign requires a user-presence check — this is not negotiable and cannot be globally disabled.** A promptless authenticator can't prove the user actually intends a given sign (see §8), so wedge always requires a per-sign *presence* signal: ideally biometric (**Touch ID / Windows Hello**), falling back to a single **hardware-key-style touch / one-click confirm**. Presence is not a passphrase and not a form — it's ~1 second proving a human is here. It is the one signal that defeats the phishing vector in §8: a sign you didn't initiate simply doesn't get your tap.
 
-Per-origin, the first request from a site offers three outcomes:
+**New site (gated add-on-first-use).** A sign request for an origin **not** in the sites list shows an origin-only prompt *before any network call* — nothing is fetched until the user adds it: **[Add & Allow once] / [Add & Always allow] / [Deny]**. Only http(s) origins are eligible (an `ssh://` or other scheme from a link is refused), so a link can't plant a launch target. Deny contacts nothing.
+
+Per-origin, once a site is known each request offers three outcomes:
 
 - **[Allow once]** — sign this one time; show the full confirm screen again next time.
 - **[Always allow]** — persist `alwaysAllow: true` for this origin: subsequent requests **skip the detail screen but still require the presence tap**. This is the automation — no passphrase, nothing to read, just Touch ID. It is *not* silent signing. Enabled inline from this dialog, with plain copy: *"Skip this screen for acme.example — you'll still confirm with Touch ID each time."*
@@ -158,9 +158,9 @@ Per-origin, the first request from a site offers three outcomes:
 
 **Advanced per-site opt-in — fully silent (no tap):** off by default, settable per origin only, behind an explicit *"this site can sign without me"* warning (`silent: true`). This is the escape hatch for a locked-down personal machine; it reopens the §8 risk for that one origin by the user's deliberate, informed choice — never the default, never global.
 
-**Key handling — delegate to `ssh-agent` (decided).** wedge does not hold private key material; it signs through the user's running `ssh-agent` (private key loaded once via `ssh-add`, passphrase handled by the agent). So signing never re-prompts for a passphrase; the presence tap above is the only per-sign interaction. wedge's config stores the **public** key identity to sign with; if the agent isn't running or the key isn't loaded, wedge reports it in its UI rather than prompting for a passphrase itself.
+**Key handling — delegate to `ssh-agent` (decided).** wedge does not hold private key material; it signs through the user's running `ssh-agent` (private keys loaded via `ssh-add`, passphrase handled by the agent). So signing never re-prompts for a passphrase; the presence tap above is the only per-sign interaction. wedge does not store a configured key — it **auto-discovers `~/.ssh/*.pub`** and signs with whichever are loaded in the agent (§6, try-next); the settings UI lists each discovered key with a loaded/not-loaded badge so an unusable key is one `ssh-add` away.
 
-**Sign log (detection).** wedge keeps a local, viewable log of every sign — timestamp, origin, namespace, and approval type (allow-once / always-allow-tap / silent) — surfaced in settings. No OS notifications (the presence tap already keeps the user in the loop). wedge **cannot revoke** the resulting session — that is the RP's responsibility ("sign out everywhere"); the log is for detection/audit, not recovery.
+**Sign log (detection).** wedge keeps a local, viewable log of every sign — timestamp, origin, the key that signed, and approval type (allow-once / always-allow-tap / silent) — surfaced in settings. No OS notifications (the presence tap already keeps the user in the loop). wedge **cannot revoke** the resulting session — that is the RP's responsibility ("sign out everywhere"); the log is for detection/audit, not recovery.
 
 Surfacing the prompt when wedge's window may be closed: the OS foregrounds wedge when it handles the `wedge://` link (step 4), and wedge opens its consent window via `internal/browser` — so the prompt always appears. (nib/hespera have no need to raise their own window; this is wedge-specific.)
 
@@ -170,6 +170,7 @@ Surfacing the prompt when wedge's window may be closed: the OS foregrounds wedge
 
 - **Origin is a lookup key, not a trust source.** Everything wedge *does* (discovery, challenge fetch, verify POST) is aimed at URLs derived from the user's configured origin, never the link. A link naming an unconfigured origin does nothing.
 - **SSRF-closed:** discovery/challenge/verify URLs are all constrained same-origin to the configured origin.
+- **Origin-bound signatures:** because `namespace == the canonical origin` and wedge refuses any namespace that isn't the origin, a signature harvested by one (even allowlisted-but-hostile) RP can't be replayed against a different one — which is also what makes signing every agent key in turn (try-next) safe.
 - **Replay/expiry:** `challenge` and `request_id` are single-use and short-lived at the RP; the RP marks them used on verify.
 - **Browser-binding:** the RP binds `request_id` to the browser that started the flow (a cookie set in step 2) and completes the login only for that browser (step 13). This closes the *steal/race* variant — an observer who learns a `request_id` for someone else's in-flight login cannot claim the resulting session.
 
