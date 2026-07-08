@@ -1,5 +1,8 @@
 /* wedge.js — browser side of "Sign in with wedge".
  *
+ * LOCKSTEP COPY: identical file at sdk/node/static/wedge.js — change both
+ * together (the endpoint contract they target is the same).
+ *
  * Served by the wedge-rp adapters at /wedge/wedge.js. Talks only to the
  * matching wedge-rp endpoints on the same origin: POST /wedge/start to mint a
  * request (the response carries the wedge:// link), open the link so the OS
