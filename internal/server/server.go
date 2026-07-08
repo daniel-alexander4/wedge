@@ -67,6 +67,7 @@ func New(configMgr *config.Manager, web fs.FS) *Server {
 	mux.HandleFunc("/api/enabled", s.handleEnabled)
 	mux.HandleFunc("/api/keys", s.handleKeys)
 	mux.HandleFunc("/api/open", s.handleOpen)
+	mux.HandleFunc("/api/signin", s.handleSignIn)
 	mux.HandleFunc("/api/ssh", s.handleSSH)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)

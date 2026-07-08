@@ -34,6 +34,7 @@ window.App = {
   getKeys: function () { return apiGet('/api/keys'); },
   // Launch a configured site in the default browser (reuses a running instance).
   openSite: function (origin) { return apiPost('/api/open', { origin: origin }); },
+  signInThenOpen: function (origin) { return apiPost('/api/signin', { origin: origin }); },
   // Open a terminal running ssh against a configured ssh:// site.
   openSSH: function (origin) { return apiPost('/api/ssh', { origin: origin }); },
   getStatus: function () { return apiGet('/api/status'); },

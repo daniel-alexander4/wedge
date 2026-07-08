@@ -112,16 +112,23 @@ function createSiteRow(origin, alwaysAllow, silent) {
     var t = normalizeSiteValue(originInput.value.trim());
     var ssh = t && t.scheme === 'ssh:';
     launchBtn.textContent = ssh ? '⌨' : '↗';
-    var label = ssh ? 'Open an SSH terminal to this host' : 'Open this site in your default browser';
+    var label = ssh ? 'Open an SSH terminal to this host' : 'Sign in with wedge and open this site';
     launchBtn.title = label;
     launchBtn.setAttribute('aria-label', label);
   }
   function launch() {
     var t = normalizeSiteValue(originInput.value.trim());
     if (!t) { setStatus('Invalid site — use http(s):// or ssh://', 'error'); return; }
-    var p = t.scheme === 'ssh:' ? App.openSSH(t.value) : App.openSite(t.value);
-    p.then(function () { setStatus('Opened ' + t.value, 'success'); })
-      .catch(function (err) { setStatus('Could not open: ' + (err.message || err), 'error'); });
+    if (t.scheme === 'ssh:') {
+      App.openSSH(t.value)
+        .then(function () { setStatus('Opened ' + t.value, 'success'); })
+        .catch(function (err) { setStatus('Could not open: ' + (err.message || err), 'error'); });
+      return;
+    }
+    // http(s): wedge signs in first, then opens the browser already logged in.
+    App.signInThenOpen(t.value)
+      .then(function () { setStatus('Signing in to ' + t.value + ' — approve in wedge…', 'success'); })
+      .catch(function (err) { setStatus('Could not sign in: ' + (err.message || err), 'error'); });
   }
   launchBtn.addEventListener('click', launch);
   launchBtn.addEventListener('keydown', function (e) {

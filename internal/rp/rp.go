@@ -90,6 +90,39 @@ func FetchChallenge(ctx context.Context, challengeURL, requestID string) (Challe
 	return c, nil
 }
 
+// AppStart is the RP's response to an app-initiated start: a challenge to sign
+// and a single-use claim_url the app hands to the browser once signing succeeds.
+type AppStart struct {
+	RequestID string `json:"request_id"`
+	Challenge string `json:"challenge"`
+	Namespace string `json:"namespace"`
+	ClaimURL  string `json:"claim_url"`
+}
+
+// StartApp POSTs to <origin>/wedge/app-start to begin an app-initiated login.
+// claim_url is required same-origin with origin, so a hostile/compromised RP
+// can't hand the browser a URL pointing at another host.
+func StartApp(ctx context.Context, origin string) (AppStart, error) {
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+		AppStart
+	}
+	if err := postJSON(ctx, strings.TrimRight(origin, "/")+"/wedge/app-start", &out); err != nil {
+		return AppStart{}, err
+	}
+	if !out.OK {
+		return AppStart{}, fmt.Errorf("app-start rejected: %s", strings.TrimSpace(out.Error))
+	}
+	if strings.TrimSpace(out.RequestID) == "" || strings.TrimSpace(out.Challenge) == "" {
+		return AppStart{}, fmt.Errorf("app-start response incomplete")
+	}
+	if !sameOrigin(origin, out.ClaimURL) {
+		return AppStart{}, fmt.Errorf("claim_url is not same-origin with %s", origin)
+	}
+	return out.AppStart, nil
+}
+
 // Verify POSTs the signature to the RP. A non-2xx or {"ok":false} is an error.
 func Verify(ctx context.Context, verifyURL string, req VerifyRequest) error {
 	body, _ := json.Marshal(req)
@@ -115,6 +148,25 @@ func Verify(ctx context.Context, verifyURL string, req VerifyRequest) error {
 		return fmt.Errorf("verify rejected: %s", out.Error)
 	}
 	return nil
+}
+
+// postJSON POSTs an empty JSON body and decodes the response into v.
+func postJSON(ctx context.Context, rawURL string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("POST %s: status %d: %s", rawURL, resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return json.Unmarshal(data, v)
 }
 
 func getJSON(ctx context.Context, rawURL string, v any) error {

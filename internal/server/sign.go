@@ -219,6 +219,31 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleSignIn starts an app-initiated login: wedge signs the RP's challenge
+// itself, then opens the default browser at the RP's single-use claim URL —
+// already authenticated. Loopback-guarded; origin is validated http(s) and the
+// full sign flow (consent, key match) gates everything downstream.
+func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Origin string `json:"origin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
+		return
+	}
+	origin := policy.NormalizeOrigin(strings.TrimSpace(body.Origin))
+	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "only http(s) sites can sign in"})
+		return
+	}
+	go s.runAppSign(origin)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // handleSSH opens a terminal running ssh against a configured ssh:// site. It
 // only launches ssh:// origins present in the sites list, and validates the
 // user/host/port strictly (terminal.ValidateSSHTarget) so a target can't inject
@@ -424,6 +449,165 @@ func (s *Server) runSign(raw string) {
 		Key:       usedKey,
 	})
 	log.Printf("sign: completed for %s (%s) with %s", origin, approval, usedKey)
+}
+
+// runAppSign is the app-initiated login: wedge drives discovery, signing, and
+// verification itself, then opens the browser at the RP's single-use claim URL —
+// already authenticated. Mirrors runSign but starts from an origin (no wedge://
+// link) and finishes by opening the browser instead of only delivering a sig.
+// Kept separate from runSign so the shipped link flow is untouched.
+func (s *Server) runAppSign(origin string) {
+	cfg := s.configMgr.Get()
+	if !cfg.Enabled {
+		log.Printf("app-sign: signing disabled")
+		return
+	}
+	origin = policy.NormalizeOrigin(origin)
+	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
+		log.Printf("app-sign: origin not http(s): %s", origin)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	approval := "allow-once"
+	consented := false
+
+	// Gated add-on-first-use: an unconfigured origin gets an origin-only consent
+	// before any network (mirrors runSign).
+	if findSite(cfg, origin) == nil {
+		p := &pendingSign{
+			ID:       fmt.Sprintf("sign-%d", signSeq.Add(1)),
+			Origin:   origin,
+			NewSite:  true,
+			decision: make(chan string, 1),
+		}
+		alwaysAllow := false
+		switch s.awaitDecision(ctx, p) {
+		case "add-always":
+			alwaysAllow = true
+			approval = "always-allow"
+		case "add-allow":
+		default:
+			log.Printf("app-sign: new site declined: %s", origin)
+			return
+		}
+		if err := s.configMgr.Update(func(c *config.Config) { addSite(c, origin, alwaysAllow) }); err != nil {
+			log.Printf("app-sign: could not add site: %v", err)
+			return
+		}
+		cfg = s.configMgr.Get()
+		consented = true
+	}
+
+	disc, err := rp.Discover(ctx, origin)
+	if err != nil {
+		log.Printf("app-sign: discovery failed for %s: %v", origin, err)
+		return
+	}
+	start, err := rp.StartApp(ctx, origin)
+	if err != nil {
+		log.Printf("app-sign: app-start failed for %s: %v", origin, err)
+		return
+	}
+
+	res := policy.EvaluateSignPolicy(policy.SignPolicyInput{
+		Enabled:   cfg.Enabled,
+		Challenge: start.Challenge,
+		Namespace: start.Namespace,
+		Origin:    origin,
+		Origins:   siteOrigins(cfg),
+	})
+	if !res.OK {
+		log.Printf("app-sign: policy rejected: %s", strings.ReplaceAll(res.Error, "\n", " "))
+		return
+	}
+
+	// Known-site consent (the presence tap / "stop phishing" prompt).
+	site := findSite(cfg, origin)
+	if !consented {
+		switch {
+		case site != nil && site.Silent:
+			approval = "silent"
+		default:
+			alwaysAllow := site != nil && site.AlwaysAllow
+			p := &pendingSign{
+				ID:          fmt.Sprintf("sign-%d", signSeq.Add(1)),
+				Origin:      origin,
+				Namespace:   res.Namespace,
+				Challenge:   start.Challenge,
+				AlwaysAllow: alwaysAllow,
+				decision:    make(chan string, 1),
+			}
+			switch s.awaitDecision(ctx, p) {
+			case "deny", "":
+				log.Printf("app-sign: denied or timed out for %s", origin)
+				return
+			case "allow-always":
+				if err := s.configMgr.Update(func(c *config.Config) { setSiteAlwaysAllow(c, origin) }); err != nil {
+					log.Printf("app-sign: could not persist always-allow: %v", err)
+				}
+				approval = "always-allow"
+			default:
+				if alwaysAllow {
+					approval = "always-allow"
+				}
+			}
+		}
+	}
+
+	signable, err := s.signableKeys()
+	if err != nil {
+		log.Printf("app-sign: key discovery failed: %v", err)
+		return
+	}
+	if len(signable) == 0 {
+		log.Printf("app-sign: no agent-loaded keys to sign with (ssh-add a key)")
+		return
+	}
+	var usedKey string
+	delivered := false
+	for _, k := range signable {
+		sig, signErr := signer.Sign(start.Challenge, res.Namespace, k.Path, signer.DefaultTimeout)
+		if signErr != nil {
+			log.Printf("app-sign: key %s could not sign: %v", k.Fingerprint, signErr)
+			continue
+		}
+		verifyErr := rp.Verify(ctx, disc.VerifyURL, rp.VerifyRequest{
+			RequestID: start.RequestID,
+			Challenge: start.Challenge,
+			Namespace: res.Namespace,
+			Signature: sig,
+			PublicKey: readPublicKey(k.Path),
+		})
+		if verifyErr == nil {
+			usedKey = keyLabel(k)
+			delivered = true
+			break
+		}
+		log.Printf("app-sign: key %s rejected by RP, trying next: %v", k.Fingerprint, verifyErr)
+	}
+	if !delivered {
+		// No registered key matched — open the plain site so the user can register.
+		log.Printf("app-sign: no agent key accepted for %s; opening plain page to register", origin)
+		if err := s.openURL(origin); err != nil {
+			log.Printf("app-sign: open plain page failed: %v", err)
+		}
+		return
+	}
+	s.log.Append(SignLogEntry{
+		Time:      time.Now().UTC().Format(time.RFC3339),
+		Origin:    origin,
+		Namespace: res.Namespace,
+		Approval:  approval,
+		Key:       usedKey,
+	})
+	// Hand the browser the finished session. claim_url was validated same-origin
+	// with the site by rp.StartApp, so this can't be turned into an open-gadget.
+	if err := s.openURL(start.ClaimURL); err != nil {
+		log.Printf("app-sign: opening claim URL failed: %v", err)
+	}
+	log.Printf("app-sign: completed for %s (%s) with %s", origin, approval, usedKey)
 }
 
 // awaitDecision parks p, surfaces wedge's window, and waits for the user's tap.
