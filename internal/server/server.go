@@ -26,7 +26,10 @@ import (
 	"wedge/internal/terminal"
 )
 
-const Version = "0.1.3"
+// Version is the running wedge version. main sets it from the ldflags-stamped
+// build version (VERSION file → -X main.version); it defaults to "dev" for
+// `go run` and tests. Reported by /api/status.
+var Version = "dev"
 
 // signLogCap bounds the in-memory sign log so it can't grow without limit.
 const signLogCap = 500

@@ -1,0 +1,32 @@
+# nfpm config for the wedge .deb. The build scripts set ARCH/VERSION in the
+# environment and stage the binary to dist/wedge (nfpm expands ${ARCH}/${VERSION}
+# but not contents.src globs, so that path is literal).
+name: wedge
+arch: ${ARCH}
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: Dan <daniel@alexander4.org>
+description: |
+  wedge — SSH-key web authentication and a launcher for your sites.
+  Runs a loopback-only app in a chromeless browser window and is the
+  registered wedge:// protocol handler.
+contents:
+  - src: dist/wedge
+    dst: /usr/bin/wedge
+    file_info:
+      mode: 0755
+  - src: build/wedge.desktop
+    dst: /usr/share/applications/wedge.desktop
+    file_info:
+      mode: 0644
+  - src: build/wedge.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/wedge.svg
+    file_info:
+      mode: 0644
+  - src: LICENSE
+    dst: /usr/share/doc/wedge/copyright
+    file_info:
+      mode: 0644
+scripts:
+  postinstall: build/postinstall.sh

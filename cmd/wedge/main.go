@@ -53,6 +53,7 @@ func main() {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	server.Version = version // single source of truth: VERSION → ldflags → here → /api/status
 	srv := server.New(mgr, wedge.WebFS())
 	if err := srv.Start(); err != nil {
 		// The UI port is taken — assume a wedge is already running and attach to

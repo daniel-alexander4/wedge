@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=wedge
+Comment=SSH-key authentication and site launcher
+Exec=wedge %u
+Icon=wedge
+Terminal=false
+Categories=Utility;Security;
+MimeType=x-scheme-handler/wedge;
+StartupNotify=true
+# Matches `chromium --class=Wedge` (set in internal/browser) so the panel uses
+# this entry's themed Icon=wedge instead of upscaling the page favicon.
+StartupWMClass=Wedge
