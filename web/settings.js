@@ -108,13 +108,25 @@ function createSiteRow(origin, alwaysAllow, silent) {
   launchBtn.className = 'launch-row-btn';
   launchBtn.setAttribute('role', 'button');
   launchBtn.tabIndex = 0;
+
+  var sftpBtn = document.createElement('span');
+  sftpBtn.className = 'launch-row-btn';
+  sftpBtn.setAttribute('role', 'button');
+  sftpBtn.tabIndex = 0;
+  // U+FE0E forces text presentation so the glyph takes the theme color
+  // instead of rendering as a color emoji.
+  sftpBtn.textContent = '🗂︎';
+  sftpBtn.title = 'Browse this host’s files over SFTP';
+  sftpBtn.setAttribute('aria-label', sftpBtn.title);
+
   function updateLaunchIcon() {
     var t = normalizeSiteValue(originInput.value.trim());
     var ssh = t && t.scheme === 'ssh:';
-    launchBtn.textContent = ssh ? '⌨' : '↗';
+    launchBtn.textContent = ssh ? '🖥︎' : '↗';
     var label = ssh ? 'Open an SSH terminal to this host' : 'Sign in with wedge and open this site';
     launchBtn.title = label;
     launchBtn.setAttribute('aria-label', label);
+    sftpBtn.style.display = ssh ? '' : 'none';
   }
   function launch() {
     var t = normalizeSiteValue(originInput.value.trim());
@@ -140,6 +152,18 @@ function createSiteRow(origin, alwaysAllow, silent) {
   launchBtn.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); launch(); }
   });
+
+  function launchSFTP() {
+    var t = normalizeSiteValue(originInput.value.trim());
+    if (!t || t.scheme !== 'ssh:') { setStatus('SFTP needs an ssh:// site', 'error'); return; }
+    App.openSFTP(t.value)
+      .then(function () { setStatus('Opened file manager for ' + t.value, 'success'); })
+      .catch(function (err) { setStatus('Could not open: ' + (err.message || err), 'error'); });
+  }
+  sftpBtn.addEventListener('click', launchSFTP);
+  sftpBtn.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); launchSFTP(); }
+  });
   updateLaunchIcon();
 
   var removeBtn = document.createElement('span');
@@ -164,6 +188,7 @@ function createSiteRow(origin, alwaysAllow, silent) {
   row.appendChild(autoLabel);
   row.appendChild(silentLabel);
   row.appendChild(launchBtn);
+  row.appendChild(sftpBtn);
   row.appendChild(removeBtn);
   return row;
 }

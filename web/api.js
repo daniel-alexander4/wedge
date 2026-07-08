@@ -37,6 +37,8 @@ window.App = {
   signInThenOpen: function (origin) { return apiPost('/api/signin', { origin: origin }); },
   // Open a terminal running ssh against a configured ssh:// site.
   openSSH: function (origin) { return apiPost('/api/ssh', { origin: origin }); },
+  // Open the OS file manager browsing a configured ssh:// site over SFTP.
+  openSFTP: function (origin) { return apiPost('/api/sftp', { origin: origin }); },
   getStatus: function () { return apiGet('/api/status'); },
   getSignLog: function () { return apiGet('/api/signlog'); },
 

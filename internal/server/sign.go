@@ -286,6 +286,55 @@ func (s *Server) handleSSH(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleSFTP opens the OS file manager browsing a configured ssh:// site over
+// SFTP. Same guards as handleSSH — only ssh:// origins present in the sites
+// list, user/host/port strictly validated (terminal.ValidateSSHTarget) — and
+// the sftp:// URL is rebuilt server-side from the validated parts only, never
+// echoed from the request, then handed to the OS URL handler
+// (Files/Finder/Explorer decide how to mount it). Loopback + same-origin
+// guarded.
+func (s *Server) handleSFTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Origin string `json:"origin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
+		return
+	}
+	raw := strings.TrimSpace(body.Origin)
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "ssh" || u.Hostname() == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not an ssh:// target"})
+		return
+	}
+	if findSite(s.configMgr.Get(), raw) == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not a configured site"})
+		return
+	}
+	user, host, port := u.User.Username(), u.Hostname(), u.Port()
+	if err := terminal.ValidateSSHTarget(user, host, port); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	target := "sftp://"
+	if user != "" {
+		target += user + "@"
+	}
+	target += host
+	if port != "" {
+		target += ":" + port
+	}
+	if err := s.openURL(target); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // ---- orchestration ----
 
 // HandleSignURL processes a wedge:// link asynchronously.

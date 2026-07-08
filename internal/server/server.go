@@ -44,8 +44,9 @@ type Server struct {
 	// signableKeys is the source of agent-loaded keys the sign path tries, in
 	// order. Defaults to keyutil.SignableKeys; overridable in tests.
 	signableKeys func() ([]keyutil.DiscoveredKey, error)
-	// openURL opens a configured site in the default browser. Defaults to
-	// browser.OpenTab; overridable in tests so they don't spawn a browser.
+	// openURL hands a URL to the OS default handler — browser for http(s)
+	// sites, file manager for sftp://. Defaults to browser.OpenTab;
+	// overridable in tests so they don't spawn anything.
 	openURL func(string) error
 	// openSSH opens a terminal running ssh against a configured ssh:// site.
 	// Defaults to terminal.OpenSSH; overridable in tests.
@@ -69,6 +70,7 @@ func New(configMgr *config.Manager, web fs.FS) *Server {
 	mux.HandleFunc("/api/open", s.handleOpen)
 	mux.HandleFunc("/api/signin", s.handleSignIn)
 	mux.HandleFunc("/api/ssh", s.handleSSH)
+	mux.HandleFunc("/api/sftp", s.handleSFTP)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)
 	mux.HandleFunc("/api/pending", s.handlePending)
