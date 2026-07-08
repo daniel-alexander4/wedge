@@ -363,7 +363,8 @@ in one command.
 - Authenticator: `wedge` (Go) — this repository.
 - RP: `wedge-web` (Python, stdlib-only) — discovery, challenge/verify/status,
   app-start/claim, and the verification kernel (`ssh-keygen -Y verify`).
-- RP middleware: `wedge-rp` (Python, `sdk/python/` in this repository) —
-  pip-installable engine implementing every RP requirement of this spec,
-  with a Flask adapter and a conformance test suite; built against this
-  document as its implementability test.
+- RP middleware: `wedge-rp` (Python, `sdk/python/`; Node, `sdk/node/` — both
+  in this repository) — pip-/npm-installable engines implementing every RP
+  requirement of this spec, with Flask and Express adapters and matching
+  conformance test suites (kept test-for-test in lockstep); built against
+  this document as its implementability test.

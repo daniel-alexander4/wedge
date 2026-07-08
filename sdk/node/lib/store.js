@@ -76,8 +76,11 @@ export class SqliteStore {
     // node:sqlite is absent, as long as SqliteStore itself isn't used.
     const { DatabaseSync } = process.getBuiltinModule('node:sqlite');
     this.#db = new DatabaseSync(path);
-    this.#db.exec('PRAGMA journal_mode=WAL');
+    // busy_timeout FIRST: it installs the wait-on-contention handler, and the
+    // very next statement (the WAL switch) contends when several processes
+    // open the same store at once.
     this.#db.exec('PRAGMA busy_timeout=5000');
+    this.#db.exec('PRAGMA journal_mode=WAL');
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS wedge_requests (
         request_id TEXT PRIMARY KEY,
