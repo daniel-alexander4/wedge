@@ -42,6 +42,10 @@ tray-ready on Linux/Windows. Still missing:
   mark with a small status dot/badge per state — as an alternative to the
   bare state tiles, so the tray reads "wedge" at a glance rather than an
   anonymous colored square. One composite per state, 22/24/32/44px.
+- **Menu-item glyphs**: the tray's sites-list menu should show a per-row
+  type glyph (web / terminal / SFTP). The §3 action glyphs cover the
+  shapes — deliver them with 16px monochrome renders too, since menus on
+  some platforms want small single-color icons.
 
 ## 3. UI action glyphs — replace font-dependent text glyphs
 
@@ -55,7 +59,13 @@ settings` set (SVG, slate/mint):
 - `wedge-glyph-sftp` — replaces `🗂︎` (SFTP file-manager launch, v0.2.6)
 - `wedge-glyph-remove` — replaces `🗑` (remove site row)
 - Roadmap glyphs, same batch if cheap: `wedge-glyph-import`
-  (~/.ssh/config import), `wedge-glyph-tunnel` (per-site tunnels/jump).
+  (~/.ssh/config import), `wedge-glyph-export` (the settings sites list
+  already has text-only Export…/Import… buttons — export is the missing
+  half of the pair), `wedge-glyph-tunnel` (per-site tunnels/jump).
+- `wedge-glyph-presence` — a "tap to approve" glyph for the consent
+  window, which is currently all text; plus a fingerprint/biometric
+  variant (`wedge-glyph-biometric`) for the pending Touch ID /
+  Windows Hello presence upgrade.
 
 (The ✓/✗ marks in the keys list and status line can stay text — they render
 consistently — unless a matching pair is trivial to add.)
