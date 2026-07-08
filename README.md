@@ -1,17 +1,79 @@
-# sshkey-web-auth-extension
+# wedge
 
-## Project Note
+**SSH-key web authentication.** wedge lets you sign in to websites with the
+SSH keys already in your ssh-agent: a site shows a "Sign in with wedge"
+button, your wedge app asks for one tap, `ssh-keygen` signs a per-login
+challenge through your agent, and the site verifies it the same way `sshd`
+would. No passwords, no WebAuthn ceremony, no cloud — your keys never leave
+your machine, and every signature is bound to one origin.
 
-This project was started the week of Feb 15, 2026 while I was on PTO from my job and using only my personal laptop.
+wedge is a single Go binary that serves its own UI over a loopback HTTP
+server and opens it in a chromeless browser window. Websites reach it through
+the `wedge://` protocol handler. It also doubles as a launcher: the same
+sites list opens web apps in your browser and `ssh://` hosts in your
+terminal, all keyed to the one agent keyring.
 
-Cross-browser WebExtension for SSH-key based web login.
+## Install
 
-This extension reads login challenge fields from a compatible `/login` form, asks a native host to sign with `ssh-keygen -Y sign`, writes the SSH signature into the form, and submits to your backend verifier.
+Linux (builds a `.deb` and installs it, including the menu entry and the
+`wedge://` handler):
 
-## Related Projects
+```bash
+./install.sh
+```
 
-- Extension (this repo): https://github.com/daniel-alexander4/sshkey-web-auth-extension
-- Demos (web app + registry): https://github.com/daniel-alexander4/sshkey-web-auth-demos
+Or run from source: `make run` (`WEDGE_NO_BROWSER=1` for headless).
+Release artifacts for all platforms: `./build.sh`. macOS/Windows `wedge://`
+handler registration is currently manual — see `docs/wedge-protocol.md` §9.
+
+## The protocol
+
+The wire protocol is specified in **[docs/wedge-spec-v1.md](docs/wedge-spec-v1.md)** —
+a normative, RFC-2119 spec written for relying-party implementers, covering
+the browser-initiated Core flow, the optional app-initiated flow, schemas,
+and the security model (origin-bound namespaces, single-use challenges,
+browser binding, mandatory user presence).
+
+## Add "Sign in with wedge" to your site
+
+Drop-in relying-party middleware, ~10 minutes each, zero runtime
+dependencies (the only external requirement is the `ssh-keygen` binary,
+OpenSSH 8.1+):
+
+| Language | Package | Adapter(s) | Where |
+|---|---|---|---|
+| Python | `wedge-rp` (pip) | Flask blueprint | [`sdk/python/`](sdk/python/) |
+| Node | `wedge-rp` (npm) | Express router | [`sdk/node/`](sdk/node/) |
+| Go | `.../sdk/go/wedgerp` | `net/http` handler | [`sdk/go/`](sdk/go/) |
+| PHP | `wedge/wedge-rp` (Composer) | vanilla PHP, PSR-15, Laravel | [`sdk/php/`](sdk/php/) |
+
+Each package implements every RP requirement of the spec, ships a runnable
+demo, and carries a conformance test suite kept test-for-test in lockstep
+with the others. Each README is the integration guide.
+
+## Repo layout
+
+- `cmd/wedge/`, `internal/`, `web/` — the wedge app (Go + embedded UI)
+- `docs/wedge-spec-v1.md` — the normative protocol spec;
+  `docs/wedge-protocol.md` — app implementation notes
+- `sdk/{python,node,go,php}/` — the relying-party middleware
+- `build/` — packaging (nfpm, desktop entry, icon set)
+
+## License
+
+MIT (see `LICENSE`).
+
+---
+
+# Legacy: browser extension
+
+wedge began as a cross-browser WebExtension (this repo, pre-rebrand:
+`sshkey-web-auth-extension`, started the week of Feb 15, 2026 on PTO). The
+extension (`src/`, `native-host/`, `manifests/`) still works and is retired
+in Phase 3; its documentation below remains valid until then. It reads login
+challenge fields from a compatible `/login` form, asks a native host to sign
+with `ssh-keygen -Y sign`, and submits the signed challenge to your backend
+verifier.
 
 ## Supported Browsers
 
@@ -247,11 +309,6 @@ Scripts are provided:
 
 For production packaging checklists, see `store-listings/shared/release-checklist.md`.
 
-## Demos
-
-Demo servers were moved to their own repo:
-- https://github.com/daniel-alexander4/sshkey-web-auth-demos
-
 ## Contributing
 
 See `CONTRIBUTING.md` for local workflow and required checks.
@@ -261,58 +318,3 @@ See `CONTRIBUTING.md` for local workflow and required checks.
 - Signing is restricted by configured origins and namespace mapping.
 - Use TLS in real deployments.
 - Keep private keys and API tokens out of source control.
-
-## License
-
-MIT (see `LICENSE`).
-
-## Interaction Diagram
-
-```text
-LOCAL CLIENT MACHINE
-+--------------------------------------+
-| +---------------------------+                |
-| | Browser (/login page)     |                |
-| +-------------+-------------+                |
-|               | reads challenge fields       |
-|               v                              |
-| +---------------------------+                |
-| | Extension (content/popup) |                |
-| +-------------+-------------+                |
-|               | native messaging             |
-|               v                              |
-| +---------------------------+                |
-| | Native host               |                |
-| | com.pubkey.auth           |                |
-| +-------------+-------------+                |
-|               | runs ssh-keygen -Y sign      |
-|               v                              |
-| +---------------------------+                |
-| | ~/.ssh private key        |                |
-| +---------------------------+                |
-+----------------------+-----------------------+
-                       |
-                       | [GREEN] --> GET /login
-                       | [WHITE] <-- HTML form + challenge
-                       | [GREEN] --> POST /auth/verify (signed)
-                       v
-             +------------------------+
-             | web-demo auth server   |
-             | verifies sig/challenge |
-             +-----------+------------+
-                         |
-              +----------+----------+
-              |                     |
-              v                     v
-     +------------------+   +----------------------+
-     | local users.json |   | registry-demo API    |
-     | (local mode)     |   | (registry mode)      |
-     +------------------+   +----------------------+
-
-Flow summary:
-1) Browser loads web-demo login page.
-2) Extension reads challenge/namespace fields and signs via native host + `ssh-keygen`.
-3) Browser submits form with SSH signature to web-demo `/auth/verify`.
-4) web-demo uses local `users.json` (local mode) or calls registry-demo API (registry mode).
-5) web-demo verifies signature against returned public keys and authenticates.
-```
