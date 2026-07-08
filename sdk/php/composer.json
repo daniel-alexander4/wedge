@@ -1,0 +1,40 @@
+{
+    "name": "wedge/wedge-rp",
+    "description": "Relying-party middleware for wedge: let users sign in to your site with their SSH key",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["wedge", "ssh", "sshsig", "authentication", "login", "passwordless"],
+    "homepage": "https://github.com/daniel-alexander4/wedge",
+    "authors": [
+        { "name": "Daniel Alexander" }
+    ],
+    "require": {
+        "php": ">=8.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12 || ^13",
+        "orchestra/testbench": "^10 || ^11"
+    },
+    "suggest": {
+        "ext-pdo_sqlite": "For SqliteStore, the recommended shared request store",
+        "psr/http-server-middleware": "For the PSR-15 middleware adapter",
+        "laravel/framework": "For the Laravel service provider"
+    },
+    "autoload": {
+        "psr-4": { "Wedge\\Rp\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Wedge\\Rp\\Tests\\": "tests/" }
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Wedge\\Rp\\Laravel\\WedgeServiceProvider"]
+        }
+    },
+    "scripts": {
+        "test": "phpunit tests"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
