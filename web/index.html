@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>wedge</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -13,7 +14,7 @@
     <!-- Settings View -->
     <div class="view active" id="view-settings">
       <div class="wrap">
-        <h1>wedge</h1>
+        <h1><img class="logo-mark" src="icons/wedge-mark-small.svg" alt="" />wedge</h1>
 
         <div id="setup-checklist" class="checklist" hidden>
           <div class="checklist-item" id="check-key">
@@ -39,14 +40,14 @@
           <button id="toggle-enabled" aria-pressed="true">On</button>
         </div>
         <div class="field">
-          <label>SSH keys <span class="field-hint">from ~/.ssh — any agent-loaded key can sign any site</span></label>
+          <label><img class="glyph" src="icons/wedge-glyph-keys.svg" alt="" />SSH keys <span class="field-hint">from ~/.ssh — any agent-loaded key can sign any site</span></label>
           <div id="keys-list" class="keys-list"></div>
         </div>
         <div class="field">
           <label>Sites <span class="field-hint">web URLs to sign into, or ssh:// hosts to open a terminal</span></label>
           <div id="origin-rows"></div>
           <div class="site-tools">
-            <button id="add-origin-row" class="secondary" type="button">+ Add site</button>
+            <button id="add-origin-row" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-add.svg" alt="" />Add site</button>
             <button id="export-sites" class="secondary" type="button">Export…</button>
             <button id="import-sites" class="secondary" type="button">Import…</button>
             <input id="import-sites-file" type="file" accept=".json,application/json" hidden />
@@ -86,7 +87,7 @@
     <!-- Onboarding View -->
     <div class="view" id="view-onboarding">
       <div class="wrap onboarding-wrap">
-        <h1>Welcome to wedge</h1>
+        <h1><img class="logo-mark" src="icons/wedge-mark-small.svg" alt="" />Welcome to wedge</h1>
         <p class="subtitle">Complete these steps to get started.</p>
 
         <div class="steps">
@@ -113,7 +114,7 @@
             <div class="step-body">
               <p>Add the first site (URL) wedge may sign into. wedge will offer to add any other site the first time you sign into it.</p>
               <div id="onboarding-origin-rows"></div>
-              <button id="onboarding-add-origin-row" class="secondary" type="button">+ Add site</button>
+              <button id="onboarding-add-origin-row" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-add.svg" alt="" />Add site</button>
               <div id="onboarding-origin-row-errors" class="field-error" hidden></div>
             </div>
           </div>

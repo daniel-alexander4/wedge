@@ -1,26 +1,25 @@
-/* wedge UI — Catppuccin Mocha palette (dark-only), 24-bit RGB. Shares the
-   nib/hespera design language; wedge's signature accent is Peach. Every colour
-   flows through the :root vars below, so the whole UI re-themes by swapping them. */
+/* wedge UI — slate/emerald/indigo palette (dark-only), derived from the wedge
+   icon set (build/icons/): slate chrome, indigo as the interactive accent,
+   emerald for success — the mark's gradient endpoints. Every colour flows
+   through the :root vars below, so the whole UI re-themes by swapping them. */
 :root {
-  --base: #1e1e2e;      /* window/page background */
-  --mantle: #181825;    /* bars, cards, panels */
-  --crust: #11111b;     /* deepest: inputs, insets, modal scrim base */
-  --surface0: #313244;  /* default button bg, hover targets */
-  --surface1: #45475a;  /* borders, button hover, secondary btn */
-  --surface2: #585b70;  /* stronger border/hover */
-  --overlay0: #6c7086;  /* dimmest text */
-  --text: #cdd6f4;      /* primary text */
-  --subtext0: #a6adc8;  /* muted text */
-  --subtext1: #bac2de;  /* brighter muted text */
-  --blue: #89b4fa;
-  --green: #a6e3a1;     /* success */
-  --red: #f38ba8;       /* error / destructive */
-  --yellow: #f9e2af;    /* warning */
-  --mauve: #cba6f7;
-  --peach: #fab387;
+  --base: #0f172a;      /* window/page background (the icon tiles' slate) */
+  --mantle: #1e293b;    /* bars, cards, panels */
+  --crust: #020617;     /* deepest: inputs, insets, modal scrim base */
+  --surface0: #334155;  /* default button bg, hover targets */
+  --surface1: #475569;  /* borders, button hover, secondary btn */
+  --surface2: #64748b;  /* stronger border/hover */
+  --overlay0: #64748b;  /* dimmest text */
+  --text: #e2e8f0;      /* primary text */
+  --subtext0: #94a3b8;  /* muted text */
+  --subtext1: #cbd5e1;  /* brighter muted text */
+  --green: #6ee7b7;     /* success (the mark's emerald) */
+  --red: #f43f5e;       /* error / destructive (wedge-error rose) */
+  --yellow: #f59e0b;    /* warning (wedge-pending amber) */
+  --indigo: #818cf8;    /* the mark's indigo */
 
-  --accent: var(--peach);        /* wedge's signature interactive accent */
-  --accent-hover: #ffc9a8;
+  --accent: var(--indigo);       /* wedge's signature interactive accent */
+  --accent-hover: #a5b4fc;
   --accent-fg: var(--crust);     /* dark text on the light accent fill */
 
   --radius-sm: 6px;
@@ -56,6 +55,11 @@ body {
 
 h1 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
 .onboarding-wrap h1 { font-size: 22px; margin-bottom: 4px; }
+/* Brand mark beside headings; the icon's own slate tile blends into --base. */
+.logo-mark { width: 22px; height: 22px; vertical-align: -5px; margin-right: 7px; }
+.onboarding-wrap .logo-mark { width: 28px; height: 28px; vertical-align: -6px; }
+/* Small inline icon inside buttons/labels */
+.glyph { width: 14px; height: 14px; vertical-align: -2px; margin-right: 4px; }
 .subtitle { color: var(--subtext0); margin: 0 0 20px; font-size: 14px; }
 
 /* Load-error banner */
@@ -65,7 +69,7 @@ h1 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
   border-radius: var(--radius);
   font-size: 14px;
   border: 1px solid var(--red);
-  background: #3a1f28;
+  background: rgba(244, 63, 94, 0.12);
   color: var(--red);
 }
 
@@ -85,12 +89,12 @@ h1 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
 }
 .status.status-success {
   border-color: var(--green);
-  background: #1e3326;
+  background: rgba(110, 231, 183, 0.12);
   color: var(--green);
 }
 .status.status-error {
   border-color: var(--red);
-  background: #3a1f28;
+  background: rgba(244, 63, 94, 0.12);
   color: var(--red);
 }
 
@@ -170,7 +174,7 @@ button[aria-pressed="false"] {
   border-radius: var(--radius);
   font-size: 13px;
   border: 1px solid var(--yellow);
-  background: #3a3320;
+  background: rgba(245, 158, 11, 0.12);
   color: var(--yellow);
 }
 
@@ -202,12 +206,12 @@ button[aria-pressed="false"] {
   flex-shrink: 0;
 }
 .check-icon.pass {
-  background: #1e3326;
+  background: rgba(110, 231, 183, 0.12);
   border: 1px solid var(--green);
   color: var(--green);
 }
 .check-icon.fail {
-  background: #3a1f28;
+  background: rgba(244, 63, 94, 0.12);
   border: 1px solid var(--red);
   color: var(--red);
 }
@@ -316,7 +320,7 @@ button[aria-pressed="false"] {
   border-radius: 999px;
   white-space: nowrap;
 }
-.key-badge.loaded { background: rgba(166, 227, 161, 0.18); color: var(--green); }
+.key-badge.loaded { background: rgba(110, 231, 183, 0.18); color: var(--green); }
 .key-badge.not-loaded { background: var(--surface1); color: var(--subtext0); }
 
 .site-tools {
@@ -394,7 +398,7 @@ button[aria-pressed="false"] {
   flex-shrink: 0;
 }
 .step.done .step-number {
-  background: #1e3326;
+  background: rgba(110, 231, 183, 0.12);
   border-color: var(--green);
   color: var(--green);
 }
@@ -420,12 +424,12 @@ button[aria-pressed="false"] {
 }
 .step-result.result-pass {
   border: 1px solid var(--green);
-  background: #1e3326;
+  background: rgba(110, 231, 183, 0.12);
   color: var(--green);
 }
 .step-result.result-fail {
   border: 1px solid var(--red);
-  background: #3a1f28;
+  background: rgba(244, 63, 94, 0.12);
   color: var(--red);
 }
 .final-actions {
@@ -445,7 +449,7 @@ button[aria-pressed="false"] {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(17, 17, 27, 0.7);
+  background: rgba(2, 6, 23, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
