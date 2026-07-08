@@ -8,9 +8,10 @@ section: utils
 priority: optional
 maintainer: Dan <daniel@alexander4.org>
 description: |
-  wedge — SSH-key web authentication and a launcher for your sites.
-  Runs a loopback-only app in a chromeless browser window and is the
-  registered wedge:// protocol handler.
+  wedge — SSH-key web authentication, plus a launcher for your web sites
+  and SSH hosts. One ssh-agent keyring: sign in, shell in, launch. Runs a
+  loopback-only app in a chromeless browser window and is the registered
+  wedge:// protocol handler.
 contents:
   - src: dist/wedge
     dst: /usr/bin/wedge

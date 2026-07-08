@@ -205,6 +205,80 @@ function collectSites(containerId) {
   return { values: out, invalidLines: invalidLines };
 }
 
+// mergeSites merges an imported sites list into the current one: adds origins
+// that are missing, ORs the alwaysAllow/silent flags on ones that exist, never
+// deletes. Import is a user-initiated local file choice, so added trust flags
+// are equivalent to the user ticking them by hand.
+function mergeSites(current, imported) {
+  var out = current.slice();
+  var byOrigin = {};
+  out.forEach(function (s, i) { byOrigin[s.origin] = i; });
+  var added = 0, updated = 0;
+  (imported || []).forEach(function (s) {
+    if (!s || typeof s.origin !== 'string') return;
+    var t = normalizeSiteValue(s.origin.trim());
+    if (!t) return; // skip entries that aren't http(s)/ssh — never import junk
+    var origin = t.value;
+    if (Object.prototype.hasOwnProperty.call(byOrigin, origin)) {
+      var cur = out[byOrigin[origin]];
+      var changed = false;
+      if (s.alwaysAllow && !cur.alwaysAllow) { cur.alwaysAllow = true; changed = true; }
+      if (s.silent && !cur.silent) { cur.silent = true; changed = true; }
+      if (changed) updated++;
+    } else {
+      var site = { origin: origin };
+      if (s.alwaysAllow) site.alwaysAllow = true;
+      if (s.silent) site.silent = true;
+      byOrigin[origin] = out.length;
+      out.push(site);
+      added++;
+    }
+  });
+  return { sites: out, added: added, updated: updated };
+}
+
+// exportSites downloads the current rows as wedge-sites.json ({"sites":[...]}),
+// the file-based multi-machine story: sync it however you like (scp, git,
+// Syncthing) and Import… it on the other machine.
+function exportSites() {
+  var parsed = collectSites();
+  if (parsed.invalidLines.length > 0) { setStatus('Fix invalid site(s) before exporting', 'error'); return; }
+  var blob = new Blob([JSON.stringify({ sites: parsed.values }, null, 2) + '\n'], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'wedge-sites.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+  setStatus('Exported ' + parsed.values.length + ' site(s) to wedge-sites.json', 'success');
+}
+
+// importSitesFile merges a wedge-sites.json (or a bare sites array) into the
+// rows. It only edits the form — the user reviews and clicks Save to persist.
+function importSitesFile(file) {
+  var reader = new FileReader();
+  reader.onload = function () {
+    var data;
+    try { data = JSON.parse(String(reader.result)); }
+    catch (e) { setStatus('Import failed: not valid JSON', 'error'); return; }
+    var list = Array.isArray(data) ? data : (data && Array.isArray(data.sites) ? data.sites : null);
+    if (!list) { setStatus('Import failed: expected {"sites":[...]}', 'error'); return; }
+    var parsed = collectSites();
+    if (parsed.invalidLines.length > 0) { setStatus('Fix invalid site(s) before importing', 'error'); return; }
+    var res = mergeSites(parsed.values, list);
+    renderSiteRows(res.sites);
+    updateNoSitesWarning();
+    if (res.added + res.updated > 0) {
+      setStatus('Imported: ' + res.added + ' added, ' + res.updated + ' updated — click Save to persist', 'success');
+    } else {
+      setStatus('Import: nothing new — all sites already present', 'success');
+    }
+  };
+  reader.onerror = function () { setStatus('Import failed: could not read file', 'error'); };
+  reader.readAsText(file);
+}
+
 function renderSiteRows(sites, containerId) {
   containerId = containerId || 'origin-rows';
   var container = document.getElementById(containerId);
@@ -347,6 +421,19 @@ function initSettings(cfg) {
     addBtn.addEventListener('click', function () {
       container.appendChild(createSiteRow());
       updateNoSitesWarning();
+    });
+  }
+
+  var exportBtn = document.getElementById('export-sites');
+  if (exportBtn) exportBtn.addEventListener('click', exportSites);
+  var importBtn = document.getElementById('import-sites');
+  var importFile = document.getElementById('import-sites-file');
+  if (importBtn && importFile) {
+    importBtn.addEventListener('click', function () { importFile.click(); });
+    importFile.addEventListener('change', function () {
+      var f = importFile.files && importFile.files[0];
+      importFile.value = ''; // allow re-importing the same filename later
+      if (f) importSitesFile(f);
     });
   }
 }

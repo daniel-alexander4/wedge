@@ -45,7 +45,12 @@
         <div class="field">
           <label>Sites <span class="field-hint">web URLs to sign into, or ssh:// hosts to open a terminal</span></label>
           <div id="origin-rows"></div>
-          <button id="add-origin-row" class="secondary" type="button">+ Add site</button>
+          <div class="site-tools">
+            <button id="add-origin-row" class="secondary" type="button">+ Add site</button>
+            <button id="export-sites" class="secondary" type="button">Export…</button>
+            <button id="import-sites" class="secondary" type="button">Import…</button>
+            <input id="import-sites-file" type="file" accept=".json,application/json" hidden />
+          </div>
           <div id="origin-row-errors" class="field-error" hidden></div>
         </div>
         <div class="field">

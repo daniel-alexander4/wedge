@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=wedge
-Comment=SSH-key authentication and site launcher
+Comment=SSH-key web authentication; launches your sites and SSH hosts
 Exec=wedge %u
 Icon=wedge
 Terminal=false
