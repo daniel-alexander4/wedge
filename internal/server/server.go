@@ -20,10 +20,10 @@ import (
 	"sync"
 	"time"
 
-	"wedge/internal/browser"
-	"wedge/internal/config"
-	"wedge/internal/keyutil"
-	"wedge/internal/terminal"
+	"github.com/daniel-alexander4/wedge/internal/browser"
+	"github.com/daniel-alexander4/wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/keyutil"
+	"github.com/daniel-alexander4/wedge/internal/terminal"
 )
 
 // Version is the running wedge version. main sets it from the ldflags-stamped

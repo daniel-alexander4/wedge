@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/config"
 )
 
 func testServer(t *testing.T) *Server {

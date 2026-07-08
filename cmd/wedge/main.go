@@ -21,11 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"wedge"
-	"wedge/internal/browser"
-	"wedge/internal/config"
-	"wedge/internal/server"
-	"wedge/internal/singleton"
+	"github.com/daniel-alexander4/wedge"
+	"github.com/daniel-alexander4/wedge/internal/browser"
+	"github.com/daniel-alexander4/wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/server"
+	"github.com/daniel-alexander4/wedge/internal/singleton"
 )
 
 // version is set at build time via -ldflags "-X main.version=…" (see build.sh).

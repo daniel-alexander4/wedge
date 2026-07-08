@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"wedge/internal/keyutil"
+	"github.com/daniel-alexander4/wedge/internal/keyutil"
 )
 
 const DefaultTimeout = 10 * time.Second

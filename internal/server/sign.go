@@ -13,14 +13,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"wedge/internal/browser"
-	"wedge/internal/config"
-	"wedge/internal/keyutil"
-	"wedge/internal/policy"
-	"wedge/internal/protocol"
-	"wedge/internal/rp"
-	"wedge/internal/signer"
-	"wedge/internal/terminal"
+	"github.com/daniel-alexander4/wedge/internal/browser"
+	"github.com/daniel-alexander4/wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/keyutil"
+	"github.com/daniel-alexander4/wedge/internal/policy"
+	"github.com/daniel-alexander4/wedge/internal/protocol"
+	"github.com/daniel-alexander4/wedge/internal/rp"
+	"github.com/daniel-alexander4/wedge/internal/signer"
+	"github.com/daniel-alexander4/wedge/internal/terminal"
 )
 
 // consentTimeout is how long a parked sign waits for the user's presence tap

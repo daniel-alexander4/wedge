@@ -11,9 +11,9 @@ import (
 	"testing/fstest"
 	"time"
 
-	"wedge/internal/config"
-	"wedge/internal/keyutil"
-	"wedge/internal/rp"
+	"github.com/daniel-alexander4/wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/keyutil"
+	"github.com/daniel-alexander4/wedge/internal/rp"
 )
 
 // genKey creates a throwaway ed25519 keypair and returns (private, public) paths.
