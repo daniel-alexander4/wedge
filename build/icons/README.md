@@ -1,30 +1,22 @@
-# wedge icon set — complete package
+# wedge icon set
 
 Brand source for wedge's iconography (2026-07, slate/emerald/indigo; the UI
 palette in `web/style.css` is derived from these colors). Mirrors Dan's
-`wedge-complete-package.zip` delivery.
+`wedge-icons.zip` delivery.
 
-Two variants of every icon:
+Every icon carries its own `#0f172a` halo/outline behind the colored art, so
+one set reads on any background — light docs, dark UI, OS themes. PNG renders
+at 16–256px are for consumers that can't take SVG (tray, Windows, READMEs);
+`favicon/favicon.ico` is the multi-size favicon build of the mark.
 
-- `svg/contrast/`, `png/contrast/` — a `#0f172a` halo/outline sits behind the
-  art so the icon reads on **any** background. Use wherever the backdrop is
-  unknown: OS/desktop icons, favicons, docs on white.
-- `svg/transparent/`, `png/transparent/` — bare art, for known-dark
-  backgrounds like the wedge UI itself.
+Wired into the app (copies — edit here, re-copy there):
 
-PNG renders at 16–256px for consumers that can't take SVG (tray, Windows,
-READMEs); `favicon/` holds multi-size `.ico` builds of the mark.
-
-Wired into the app:
-
-- `svg/contrast/wedge-mark.svg` — copy at `build/wedge.svg`, which nfpm
-  installs to hicolor and `wedge.desktop` references as `Icon=wedge`.
-  Edit here, re-copy there.
-- `svg/contrast/wedge-mark-small.svg` — copy at `web/favicon.svg` (browser
-  tab background varies with theme, so contrast).
-- `svg/transparent/wedge-mark-small.svg`, `wedge-glyph-add.svg`,
-  `wedge-glyph-keys.svg` — copies in `web/icons/` (UI header mark and the
-  Add-site / SSH-keys glyphs; the UI is always dark, so transparent).
+- `svg/wedge-mark.svg` → `build/wedge.svg` (nfpm installs it to hicolor;
+  `wedge.desktop` references it as `Icon=wedge`).
+- `svg/wedge-mark-small.svg` → `web/favicon.svg` and
+  `web/icons/wedge-mark-small.svg` (UI header mark).
+- `svg/wedge-glyph-add.svg`, `svg/wedge-glyph-keys.svg` → `web/icons/`
+  (Add-site buttons, SSH-keys label).
 
 Staged, not yet wired:
 
