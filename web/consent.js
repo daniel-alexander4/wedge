@@ -1,6 +1,6 @@
 // Consent dialog for wedge:// sign requests.
 //
-// PHASE 2: a continuous long-poll (App.pollPending) surfaces a parked sign
+// A continuous long-poll (App.pollPending) surfaces a parked sign
 // request from the Go backend and shows this overlay. The user's click IS the
 // mandatory user-presence signal that authorizes the signature — see
 // docs/wedge-protocol.md §7. The decision goes back via App.respond. The loop

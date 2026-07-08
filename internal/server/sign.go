@@ -148,6 +148,9 @@ func (s *Server) handleRespond(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
 		return
 	}
+	// Decision is the UI verb (allow / allow-always / deny). runSign maps it to a
+	// sign-log approval label (allow-once / always-allow / silent) — distinct
+	// vocabularies for two layers; note "allow-always" (verb) vs "always-allow" (label).
 	switch body.Decision {
 	case "allow", "allow-always", "deny":
 	default:

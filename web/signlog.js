@@ -1,4 +1,4 @@
-// Sign-log view — lists past signatures. Empty in Phase 1 (nothing signs yet).
+// Sign-log view — lists past signatures (populated by the wedge:// sign path).
 
 async function showSignLog() {
   showView('view-signlog');

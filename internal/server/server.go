@@ -1,7 +1,7 @@
 // Package server hosts wedge's own settings/onboarding UI on a loopback-only
 // HTTP listener. It has NO cross-origin surface — the old /sign endpoint that a
-// website called cross-origin is gone; signing now arrives via the wedge://
-// protocol handler (Phase 2). Every route here is for wedge's own app-mode
+// website called cross-origin is gone; signing arrives via the wedge://
+// protocol handler. Every route here is for wedge's own app-mode
 // window and is guarded by both a loopback check (peer IP + Host header) and a
 // same-origin CSRF check, mirroring the nib/hespera pattern.
 package server
@@ -199,8 +199,8 @@ type signLog struct {
 	entries []SignLogEntry
 }
 
-// Append records a sign event, bounded at signLogCap (oldest dropped). Phase 2
-// calls this from the sign path; in Phase 1 the log stays empty.
+// Append records a sign event, bounded at signLogCap (oldest dropped). The sign
+// path calls this on every completed sign.
 func (l *signLog) Append(e SignLogEntry) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
