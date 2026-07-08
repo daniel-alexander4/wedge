@@ -364,9 +364,10 @@ in one command.
 - RP: `wedge-web` (Python, stdlib-only) — discovery, challenge/verify/status,
   app-start/claim, and the verification kernel (`ssh-keygen -Y verify`).
 - RP middleware: `wedge-rp` (Python, `sdk/python/`; Node, `sdk/node/`; Go,
-  `sdk/go/wedgerp` — all in this repository) — pip-/npm-/go-gettable engines
-  implementing every RP requirement of this spec, with Flask, Express, and
-  net/http adapters and matching conformance test suites (kept test-for-test
-  in lockstep); built against this document as its implementability test.
-  The Go package shares the authenticator's own origin-equivalence code and
-  wire types, so the two protocol sides cannot drift.
+  `sdk/go/wedgerp`; PHP, `sdk/php/` — all in this repository) —
+  pip-/npm-/go-/composer-gettable engines implementing every RP requirement
+  of this spec, with Flask, Express, net/http, and vanilla-PHP/PSR-15/Laravel
+  adapters and matching conformance test suites (kept test-for-test in
+  lockstep); built against this document as its implementability test. The
+  Go package shares the authenticator's own origin-equivalence code and wire
+  types, so the two protocol sides cannot drift.
