@@ -14,8 +14,9 @@ wedge proves possession of a user's SSH key to a website, without a browser exte
 | **wedge** | The user's desktop app. Holds the key unlocked (ssh-agent style), is the registered `wedge://` protocol handler, and runs a loopback server **for its own UI only** (never reachable cross-origin). |
 | **RP** (relying party) | The website the user logs into. Has a **frontend** (login page) and a **backend** (the verifier + flow endpoints). |
 | **origin** | The RP's web origin, e.g. `https://acme.example`. wedge's primary config key. |
-| **challenge** | Random one-time bytes the RP wants signed. Format: `^[A-Za-z0-9_-]{16,256}$` (unchanged from today). |
-| **namespace / company** | The SSH-signature namespace and optional company tag the RP expects, matched by wedge's existing `policy` package. Namespace/company format: `^[A-Za-z0-9._:-]{1,64}$`. |
+| **challenge** | Random one-time bytes the RP wants signed. Format: `^[A-Za-z0-9_-]{16,256}$`. |
+| **namespace** | The SSH-signature namespace the RP expects — **equal to the RP's canonical origin** (`namespace == origin`). wedge signs with the value the RP reports and rejects any namespace not equivalent (localhost↔127.0.0.1) to the link origin. This binds every signature to one origin, so it can't be replayed against another. (There is no separate namespace or company to configure; the old 64-char tag regex is retired.) |
+| **keys** | wedge auto-discovers the user's `~/.ssh/*.pub` keys and signs with the **agent-loaded** ones, trying each in turn until the RP accepts one (try-next). Any key may be used for any site. |
 | **request_id** | Opaque, single-use handle for one login attempt. Ties the browser, the signature, and the poll together. |
 
 **Design invariant:** the `wedge://` link is fully attacker-controllable. wedge treats `origin` **only as a lookup key into its own config** and `request_id` as opaque. wedge never learns *where to send anything* from the link — only from config/discovery. This is what makes the link safe to accept from any source.
@@ -194,21 +195,19 @@ Residual, by deliberate user choice only: the **per-site advanced `silent: true`
 
 ---
 
-## 10. Config schema additions
+## 10. Config schema
 
-Extends today's `config.OriginScope` (already carries `namespace`, `company`):
+A single `sites` list — the origin is the whole identity (namespace == origin), and any agent-loaded `~/.ssh` key may sign any site, so there is no per-site namespace, company, or key:
 
 ```jsonc
-"originScopes": {
-  "https://acme.example": [
-    { "namespace": "acme-login", "company": "acme",
-      "alwaysAllow": false,   // skip the detail screen; presence tap still required
-      "silent": false }       // advanced: skip the presence tap too (per-site, explicitly warned)
-  ]
-}
+"sites": [
+  { "origin": "https://acme.example",
+    "alwaysAllow": false,   // skip the detail screen; presence tap still required
+    "silent": false }       // advanced: skip the presence tap too (per-site, explicitly warned)
+]
 ```
 
-`alwaysAllow` and `silent` are independent: `alwaysAllow` drops the detail screen, `silent` drops the presence tap. Default both `false`. Discovery-supplied `challenge_url`/`verify_url` are cached (memory/short-TTL), not persisted — config stays origin + identity + automation flags only.
+`alwaysAllow` and `silent` are independent: `alwaysAllow` drops the detail screen, `silent` drops the presence tap. Default both `false`. The old `keyPath` + `allowedOrigins` + `originScopes` schema is migrated to `sites` on load. New origins are added by **gated add-on-first-use**: an unknown origin shows an origin-only "new site" prompt (no network) with Add & Allow / Add & Always allow / Deny; wedge only contacts the RP after the user adds it. Discovery-supplied `challenge_url`/`verify_url` are cached (memory/short-TTL), not persisted.
 
 ---
 

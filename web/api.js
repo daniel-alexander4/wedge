@@ -30,7 +30,8 @@ window.App = {
   setEnabled: function (enabled) {
     return apiPost('/api/enabled', { enabled: enabled }).then(function (d) { return d.config; });
   },
-  validateKey: function (keyPath) { return apiPost('/api/validate-key', { keyPath: keyPath }); },
+  // Discovered ~/.ssh public keys, each with whether it's loaded in the agent.
+  getKeys: function () { return apiGet('/api/keys'); },
   getStatus: function () { return apiGet('/api/status'); },
   getSignLog: function () { return apiGet('/api/signlog'); },
 
@@ -38,7 +39,8 @@ window.App = {
   // open (~25s) and returns {pending:false} on timeout or {pending:true,
   // request:{...}}. Callers loop; on a network error, back off ~1s and retry.
   pollPending: function () { return apiGet('/api/pending'); },
-  // Return the user's decision for a pending sign request.
-  // decision ∈ "allow" | "allow-always" | "deny".
+  // Return the user's decision for a pending sign request. For a known site:
+  // "allow" | "allow-always" | "deny". For a new-site prompt: "add-allow" |
+  // "add-always" | "deny".
   respond: function (id, decision) { return apiPost('/api/respond', { id: id, decision: decision }); }
 };

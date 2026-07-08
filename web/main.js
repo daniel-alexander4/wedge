@@ -25,7 +25,7 @@ function showLoadError(err) {
 async function initApp() {
   try {
     var cfg = await App.getConfig();
-    if (!cfg.allowedOrigins || cfg.allowedOrigins.length === 0) {
+    if (!cfg.sites || cfg.sites.length === 0) {
       showView('view-onboarding');
       initOnboarding(cfg);
     } else {

@@ -34,9 +34,12 @@ type pendingSign struct {
 	ID          string `json:"id"`
 	Origin      string `json:"origin"`
 	Namespace   string `json:"namespace"`
-	Company     string `json:"company"`
 	Challenge   string `json:"challenge"`
 	AlwaysAllow bool   `json:"alwaysAllow"`
+	// NewSite marks the gated add-on-first-use prompt: the origin isn't in the
+	// sites list yet, so this is shown origin-only (no namespace/challenge —
+	// nothing has been fetched over the network) with Add & Allow / Add & Always.
+	NewSite bool `json:"newSite"`
 
 	decision chan string `json:"-"`
 }
@@ -148,11 +151,12 @@ func (s *Server) handleRespond(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
 		return
 	}
-	// Decision is the UI verb (allow / allow-always / deny). runSign maps it to a
-	// sign-log approval label (allow-once / always-allow / silent) — distinct
-	// vocabularies for two layers; note "allow-always" (verb) vs "always-allow" (label).
+	// Decision is the UI verb. Known-site prompts send allow / allow-always /
+	// deny; the new-site prompt sends add-allow / add-always / deny. runSign maps
+	// these to a sign-log approval label (allow-once / always-allow / silent) —
+	// distinct vocabularies for two layers.
 	switch body.Decision {
-	case "allow", "allow-always", "deny":
+	case "allow", "allow-always", "add-allow", "add-always", "deny":
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid decision"})
 		return
@@ -197,13 +201,48 @@ func (s *Server) runSign(raw string) {
 		return
 	}
 	origin := policy.NormalizeOrigin(req.Origin)
-	if origin == "" || !originAllowed(origin, cfg) {
-		log.Printf("sign: origin not allowed: %s", req.Origin)
+	if origin == "" {
+		log.Printf("sign: bad origin: %s", req.Origin)
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+
+	approval := "allow-once"
+	consented := false // set once a presence tap has authorized this sign
+
+	// Gated add-on-first-use: an origin not in the sites list gets an
+	// origin-only consent BEFORE any network. Nothing is fetched until the user
+	// explicitly adds it — preserving the no-network-for-unconfigured-origins
+	// invariant. Deny contacts nothing. The Add tap is itself the presence tap,
+	// so the normal consent below is skipped for a just-added site.
+	if findSite(cfg, origin) == nil {
+		p := &pendingSign{
+			ID:       fmt.Sprintf("sign-%d", signSeq.Add(1)),
+			Origin:   origin,
+			NewSite:  true,
+			decision: make(chan string, 1),
+		}
+		alwaysAllow := false
+		switch s.awaitDecision(ctx, p) {
+		case "add-always":
+			alwaysAllow = true
+			approval = "always-allow"
+		case "add-allow":
+		default: // "deny" or timeout
+			log.Printf("sign: new site declined: %s", origin)
+			return
+		}
+		if err := s.configMgr.Update(func(c *config.Config) {
+			addSite(c, origin, alwaysAllow)
+		}); err != nil {
+			log.Printf("sign: could not add site: %v", err)
+			return
+		}
+		cfg = s.configMgr.Get()
+		consented = true
+	}
 
 	disc, err := rp.Discover(ctx, origin)
 	if err != nil {
@@ -217,75 +256,98 @@ func (s *Server) runSign(raw string) {
 	}
 
 	res := policy.EvaluateSignPolicy(policy.SignPolicyInput{
-		Enabled:        cfg.Enabled,
-		Challenge:      ch.Challenge,
-		Namespace:      ch.Namespace,
-		Company:        ch.Company,
-		Origin:         origin,
-		AllowedOrigins: cfg.AllowedOrigins,
-		OriginScopes:   cfg.OriginScopes,
+		Enabled:   cfg.Enabled,
+		Challenge: ch.Challenge,
+		Namespace: ch.Namespace,
+		Origin:    origin,
+		Origins:   siteOrigins(cfg),
 	})
 	if !res.OK {
 		log.Printf("sign: policy rejected: %s", strings.ReplaceAll(res.Error, "\n", " "))
 		return
 	}
 
-	scope := findScope(cfg, origin, res.ExpectedNamespace)
-	approval := "allow-once"
-
-	if scope != nil && scope.Silent {
-		approval = "silent" // per-site advanced opt-in: no presence tap
-	} else {
-		alwaysAllow := scope != nil && scope.AlwaysAllow
-		p := &pendingSign{
-			ID:          fmt.Sprintf("sign-%d", signSeq.Add(1)),
-			Origin:      origin,
-			Namespace:   res.ExpectedNamespace,
-			Company:     res.ExpectedCompany,
-			Challenge:   ch.Challenge,
-			AlwaysAllow: alwaysAllow,
-			decision:    make(chan string, 1),
-		}
-		switch s.awaitDecision(ctx, p) {
-		case "deny", "":
-			log.Printf("sign: denied or timed out for %s", origin)
-			return
-		case "allow-always":
-			if err := s.configMgr.Update(func(c *config.Config) {
-				setAlwaysAllow(c, origin, res.ExpectedNamespace)
-			}); err != nil {
-				log.Printf("sign: could not persist always-allow: %v", err)
+	// Consent for an already-known site. (A site just added above already got its
+	// presence tap in the new-site prompt, so it skips this.)
+	site := findSite(cfg, origin)
+	if !consented {
+		switch {
+		case site != nil && site.Silent:
+			approval = "silent" // per-site advanced opt-in: no presence tap
+		default:
+			alwaysAllow := site != nil && site.AlwaysAllow
+			p := &pendingSign{
+				ID:          fmt.Sprintf("sign-%d", signSeq.Add(1)),
+				Origin:      origin,
+				Namespace:   res.Namespace,
+				Challenge:   ch.Challenge,
+				AlwaysAllow: alwaysAllow,
+				decision:    make(chan string, 1),
 			}
-			approval = "always-allow"
-		default: // "allow"
-			if alwaysAllow {
+			switch s.awaitDecision(ctx, p) {
+			case "deny", "":
+				log.Printf("sign: denied or timed out for %s", origin)
+				return
+			case "allow-always":
+				if err := s.configMgr.Update(func(c *config.Config) {
+					setSiteAlwaysAllow(c, origin)
+				}); err != nil {
+					log.Printf("sign: could not persist always-allow: %v", err)
+				}
 				approval = "always-allow"
+			default: // "allow"
+				if alwaysAllow {
+					approval = "always-allow"
+				}
 			}
 		}
 	}
 
-	sig, err := signer.Sign(ch.Challenge, res.ExpectedNamespace, cfg.KeyPath, signer.DefaultTimeout)
+	// Try each agent-loaded key in turn; the first the RP accepts wins. A failed
+	// verify doesn't consume the RP's challenge, so the next key can be tried.
+	signable, err := s.signableKeys()
 	if err != nil {
-		log.Printf("sign: signing failed: %v", err)
+		log.Printf("sign: key discovery failed: %v", err)
 		return
 	}
-	if err := rp.Verify(ctx, disc.VerifyURL, rp.VerifyRequest{
-		RequestID: req.RequestID,
-		Challenge: ch.Challenge,
-		Namespace: res.ExpectedNamespace,
-		Signature: sig,
-		PublicKey: publicKeyForConfig(cfg.KeyPath),
-	}); err != nil {
-		log.Printf("sign: verify delivery failed: %v", err)
+	if len(signable) == 0 {
+		log.Printf("sign: no agent-loaded keys to sign with (ssh-add a key)")
+		return
+	}
+	var usedKey string
+	delivered := false
+	for _, k := range signable {
+		sig, signErr := signer.Sign(ch.Challenge, res.Namespace, k.Path, signer.DefaultTimeout)
+		if signErr != nil {
+			log.Printf("sign: key %s could not sign: %v", k.Fingerprint, signErr)
+			continue
+		}
+		verifyErr := rp.Verify(ctx, disc.VerifyURL, rp.VerifyRequest{
+			RequestID: req.RequestID,
+			Challenge: ch.Challenge,
+			Namespace: res.Namespace,
+			Signature: sig,
+			PublicKey: readPublicKey(k.Path),
+		})
+		if verifyErr == nil {
+			usedKey = keyLabel(k)
+			delivered = true
+			break
+		}
+		log.Printf("sign: key %s rejected by RP, trying next: %v", k.Fingerprint, verifyErr)
+	}
+	if !delivered {
+		log.Printf("sign: no agent key was accepted for %s", origin)
 		return
 	}
 	s.log.Append(SignLogEntry{
 		Time:      time.Now().UTC().Format(time.RFC3339),
 		Origin:    origin,
-		Namespace: res.ExpectedNamespace,
+		Namespace: res.Namespace,
 		Approval:  approval,
+		Key:       usedKey,
 	})
-	log.Printf("sign: completed for %s (%s)", origin, approval)
+	log.Printf("sign: completed for %s (%s) with %s", origin, approval, usedKey)
 }
 
 // awaitDecision parks p, surfaces wedge's window, and waits for the user's tap.
@@ -310,49 +372,65 @@ func (s *Server) awaitDecision(ctx context.Context, p *pendingSign) string {
 
 // ---- config helpers ----
 
-func originAllowed(origin string, cfg config.Config) bool {
-	for _, cand := range policy.EquivalentOrigins(origin) {
-		for _, a := range cfg.AllowedOrigins {
-			if cand == a {
-				return true
-			}
-		}
+// siteOrigins is the configured allowlist passed to the policy engine.
+func siteOrigins(cfg config.Config) []string {
+	origins := make([]string, 0, len(cfg.Sites))
+	for _, site := range cfg.Sites {
+		origins = append(origins, site.Origin)
 	}
-	return false
+	return origins
 }
 
-func findScope(cfg config.Config, origin, namespace string) *config.OriginScope {
+// findSite returns the site for origin (up to the localhost↔127.0.0.1 alias).
+func findSite(cfg config.Config, origin string) *config.Site {
 	for _, cand := range policy.EquivalentOrigins(origin) {
-		scopes := cfg.OriginScopes[cand]
-		for i := range scopes {
-			if strings.TrimSpace(scopes[i].Namespace) == namespace {
-				return &scopes[i]
+		for i := range cfg.Sites {
+			if cfg.Sites[i].Origin == cand {
+				return &cfg.Sites[i]
 			}
 		}
 	}
 	return nil
 }
 
-func setAlwaysAllow(c *config.Config, origin, namespace string) {
+// addSite appends origin to the sites list if not already present (gated
+// add-on-first-use). No-op if an equivalent origin is already configured.
+func addSite(c *config.Config, origin string, alwaysAllow bool) {
 	for _, cand := range policy.EquivalentOrigins(origin) {
-		scopes := c.OriginScopes[cand]
-		for i := range scopes {
-			if strings.TrimSpace(scopes[i].Namespace) == namespace {
-				scopes[i].AlwaysAllow = true
+		for i := range c.Sites {
+			if c.Sites[i].Origin == cand {
+				c.Sites[i].AlwaysAllow = c.Sites[i].AlwaysAllow || alwaysAllow
+				return
+			}
+		}
+	}
+	c.Sites = append(c.Sites, config.Site{Origin: origin, AlwaysAllow: alwaysAllow})
+}
+
+func setSiteAlwaysAllow(c *config.Config, origin string) {
+	for _, cand := range policy.EquivalentOrigins(origin) {
+		for i := range c.Sites {
+			if c.Sites[i].Origin == cand {
+				c.Sites[i].AlwaysAllow = true
 				return
 			}
 		}
 	}
 }
 
-func publicKeyForConfig(keyPath string) string {
-	p := keyutil.ResolveKeyPath(keyPath)
-	if !strings.HasSuffix(p, ".pub") {
-		return ""
-	}
-	b, err := os.ReadFile(p)
+func readPublicKey(path string) string {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(b))
+}
+
+// keyLabel is a human-readable identifier for the sign log: the key's comment
+// if it has one, else its fingerprint.
+func keyLabel(k keyutil.DiscoveredKey) string {
+	if c := strings.TrimSpace(k.Comment); c != "" {
+		return c
+	}
+	return k.Fingerprint
 }

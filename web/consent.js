@@ -21,43 +21,66 @@
     });
   }
 
-  // render populates and shows the overlay for a request. Two modes:
-  //  - alwaysAllow=false: full detail + Allow once / Always allow / Deny.
-  //  - alwaysAllow=true:  minimal confirm line + Confirm / Deny (still a tap).
+  // render populates and shows the overlay for a request. Three modes:
+  //  - newSite:          gated add-on-first-use — origin only (no network yet),
+  //                      Add & Allow once / Add & Always allow / Deny.
+  //  - alwaysAllow=true: minimal confirm line + Confirm / Deny (still a tap).
+  //  - otherwise:        full detail + Allow once / Always allow / Deny.
   // All request values are attacker-influenced, so they go in via textContent.
   function render(request) {
     current = request;
     submitting = false;
 
-    var minimal = request.alwaysAllow === true;
+    var newSite = request.newSite === true;
+    var minimal = !newSite && request.alwaysAllow === true;
 
     el('consent-origin').textContent = request.origin || '';
-    el('consent-namespace').textContent = request.namespace || '';
-
-    var companyRow = el('consent-company-row');
-    if (request.company) {
-      el('consent-company').textContent = request.company;
-      companyRow.hidden = false;
-    } else {
-      companyRow.hidden = true;
-    }
 
     var challenge = request.challenge || '';
     if (challenge.length > 64) challenge = challenge.substring(0, 64) + '...';
     el('consent-challenge').textContent = challenge;
 
-    el('consent-minimal-line').textContent =
-      'Confirm sign-in to ' + (request.origin || 'this site');
+    var allow = el('consent-allow');
+    var always = el('consent-allow-always');
 
-    el('consent-detail').hidden = minimal;
-    el('consent-minimal-line').hidden = !minimal;
-    el('consent-title').textContent = minimal ? 'Confirm sign-in' : 'Sign request';
-    el('consent-allow').textContent = minimal ? 'Confirm' : 'Allow once';
-    el('consent-allow-always').hidden = minimal;
+    if (newSite) {
+      el('consent-title').textContent = 'New site';
+      el('consent-minimal-line').textContent =
+        'wedge has never signed into ' + (request.origin || 'this site') + '. Add it?';
+      el('consent-detail').hidden = true; // nothing fetched yet
+      el('consent-minimal-line').hidden = false;
+      allow.textContent = 'Add & Allow once';
+      always.textContent = 'Add & Always allow';
+      always.hidden = false;
+    } else if (minimal) {
+      el('consent-title').textContent = 'Confirm sign-in';
+      el('consent-minimal-line').textContent =
+        'Confirm sign-in to ' + (request.origin || 'this site');
+      el('consent-detail').hidden = true;
+      el('consent-minimal-line').hidden = false;
+      allow.textContent = 'Confirm';
+      always.hidden = true;
+    } else {
+      el('consent-title').textContent = 'Sign request';
+      el('consent-detail').hidden = false;
+      el('consent-minimal-line').hidden = true;
+      allow.textContent = 'Allow once';
+      always.textContent = 'Always allow';
+      always.hidden = false;
+    }
 
     setDisabled(false);
     el('consent-overlay').hidden = false;
-    el('consent-allow').focus();
+    allow.focus();
+  }
+
+  // The three buttons map to different decision verbs for a new-site prompt vs a
+  // known-site prompt.
+  function decisionFor(role) {
+    var newSite = current && current.newSite === true;
+    if (role === 'deny') return 'deny';
+    if (role === 'always') return newSite ? 'add-always' : 'allow-always';
+    return newSite ? 'add-allow' : 'allow';
   }
 
   function hide() {
@@ -105,18 +128,18 @@
     var allow = el('consent-allow');
     var always = el('consent-allow-always');
     var deny = el('consent-deny');
-    if (allow) allow.addEventListener('click', function () { decide('allow'); });
-    if (always) always.addEventListener('click', function () { decide('allow-always'); });
-    if (deny) deny.addEventListener('click', function () { decide('deny'); });
+    if (allow) allow.addEventListener('click', function () { decide(decisionFor('primary')); });
+    if (always) always.addEventListener('click', function () { decide(decisionFor('always')); });
+    if (deny) deny.addEventListener('click', function () { decide(decisionFor('deny')); });
 
     document.addEventListener('keydown', function (e) {
       if (el('consent-overlay').hidden) return;
       if (e.key === 'Enter') {
         e.preventDefault();
-        decide('allow');
+        decide(decisionFor('primary'));
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        decide('deny');
+        decide(decisionFor('deny'));
       }
     });
   }

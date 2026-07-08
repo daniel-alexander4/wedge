@@ -32,49 +32,28 @@ function initOnboarding(cfg) {
     })(i);
   }
 
-  var keyPathInput = document.getElementById('onboarding-key-path');
-  var keyTabs = document.querySelectorAll('[data-key-type][data-onboarding]');
-  keyTabs.forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      var type = tab.dataset.keyType;
-      if (!KEY_PATHS[type] || !keyPathInput) return;
-      keyPathInput.value = KEY_PATHS[type];
-      keyTabs.forEach(function (t) {
-        t.setAttribute('aria-pressed', t === tab ? 'true' : 'false');
-      });
-    });
+  // Step 1: show discovered keys (read-only — nothing to configure). Mark done
+  // if at least one key is loaded in the agent, and advance to sites.
+  renderKeysList('onboarding-keys-list').then(async function () {
+    try {
+      var data = await App.getKeys();
+      var keys = (data && data.keys) || [];
+      var loaded = keys.filter(function (k) { return k.agentLoaded; });
+      if (loaded.length > 0) {
+        markStepDone(1, loaded.length + ' key(s)');
+      } else {
+        markStepDone(1, 'ssh-add a key');
+      }
+    } catch (e) { /* leave step 1 unmarked on error */ }
   });
 
-  // Step 1: validate key.
-  var validateBtn = document.getElementById('validate-key-btn');
-  if (validateBtn) {
-    validateBtn.addEventListener('click', async function () {
-      validateBtn.textContent = 'Validating...';
-      validateBtn.disabled = true;
-      var kp = (keyPathInput ? keyPathInput.value.trim() : '') || '~/.ssh/id_ed25519';
-      try {
-        var result = await App.validateKey(kp);
-        var keyOk = result.valid === true;
-        showResult('key-result', keyOk, keyOk ? 'Key is valid!' : 'Key error: ' + (result.error || 'validation failed'));
-        if (keyOk) {
-          markStepDone(1, 'Valid');
-          activateStep(2);
-        }
-      } catch (err) {
-        showResult('key-result', false, 'Error: ' + (err.message || err));
-      }
-      validateBtn.textContent = 'Validate Key';
-      validateBtn.disabled = false;
-    });
-  }
-
-  // Step 2: origin rows.
+  // Step 2: site rows.
   var originRows = document.getElementById('onboarding-origin-rows');
-  if (originRows) originRows.appendChild(createOriginRow());
+  if (originRows) originRows.appendChild(createSiteRow());
   var addRowBtn = document.getElementById('onboarding-add-origin-row');
   if (addRowBtn && originRows) {
     addRowBtn.addEventListener('click', function () {
-      originRows.appendChild(createOriginRow());
+      originRows.appendChild(createSiteRow());
     });
   }
 
@@ -82,34 +61,29 @@ function initOnboarding(cfg) {
   var saveFinishBtn = document.getElementById('save-and-finish');
   if (saveFinishBtn) {
     saveFinishBtn.addEventListener('click', async function () {
-      var parsed = collectOriginScopes('onboarding-origin-rows');
+      var parsed = collectSites('onboarding-origin-rows');
       var errorsEl = document.getElementById('onboarding-origin-row-errors');
       if (parsed.invalidLines.length > 0) {
         if (errorsEl) { errorsEl.textContent = parsed.invalidLines.join(' | '); errorsEl.hidden = false; }
         return;
       }
 
-      var allowedOrigins = Object.keys(parsed.values);
-      // Refuse to "finish" with zero targets — otherwise the app re-launches
-      // straight back into onboarding with no explanation.
-      if (allowedOrigins.length === 0) {
+      // Require one bootstrap site — an empty list re-launches straight back into
+      // onboarding. wedge adds any further sites on first use.
+      if (parsed.values.length === 0) {
         if (errorsEl) {
-          errorsEl.textContent = 'Add at least one target system before finishing.';
+          errorsEl.textContent = 'Add at least one site before finishing.';
           errorsEl.hidden = false;
         }
         return;
       }
       if (errorsEl) { errorsEl.textContent = ''; errorsEl.hidden = true; }
 
-      var kp = (keyPathInput ? keyPathInput.value.trim() : '') || '~/.ssh/id_ed25519';
       var statusEl = document.getElementById('onboarding-status');
-
       try {
         await App.setConfig({
           enabled: true,
-          keyPath: kp,
-          allowedOrigins: allowedOrigins,
-          originScopes: parsed.values,
+          sites: parsed.values,
           serverPort: 7890
         });
 

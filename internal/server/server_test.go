@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -21,10 +20,7 @@ func testServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	m.Update(func(c *config.Config) {
-		c.AllowedOrigins = []string{"https://acme.example"}
-		c.OriginScopes = map[string][]config.OriginScope{
-			"https://acme.example": {{Namespace: "acme-login"}},
-		}
+		c.Sites = []config.Site{{Origin: "https://acme.example"}}
 	})
 	web := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<html>ok</html>")}}
 	return New(m, web)
@@ -64,24 +60,21 @@ func TestGetConfig(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
 		t.Fatalf("bad json: %v", err)
 	}
-	if len(cfg.AllowedOrigins) != 1 || cfg.AllowedOrigins[0] != "https://acme.example" {
-		t.Errorf("unexpected allowedOrigins: %v", cfg.AllowedOrigins)
+	if len(cfg.Sites) != 1 || cfg.Sites[0].Origin != "https://acme.example" {
+		t.Errorf("unexpected sites: %v", cfg.Sites)
 	}
 }
 
 func TestPostConfigRoundTrip(t *testing.T) {
 	s := testServer(t)
-	body := `{"enabled":true,"keyPath":"~/.ssh/id_ed25519.pub","allowedOrigins":["https://beta.example"],"originScopes":{"https://beta.example":[{"namespace":"beta","alwaysAllow":true}]},"serverPort":7890}`
+	body := `{"enabled":true,"sites":[{"origin":"https://beta.example","alwaysAllow":true}],"serverPort":7890}`
 	w := serve(s, loopbackReq(http.MethodPost, "/api/config", body))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
 	}
 	got := s.configMgr.Get()
-	if len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "https://beta.example" {
-		t.Errorf("config not persisted: %v", got.AllowedOrigins)
-	}
-	if scopes := got.OriginScopes["https://beta.example"]; len(scopes) != 1 || !scopes[0].AlwaysAllow {
-		t.Errorf("alwaysAllow not round-tripped: %+v", got.OriginScopes)
+	if len(got.Sites) != 1 || got.Sites[0].Origin != "https://beta.example" || !got.Sites[0].AlwaysAllow {
+		t.Errorf("sites not round-tripped: %+v", got.Sites)
 	}
 }
 
@@ -112,20 +105,22 @@ func TestCSRFRejectsCrossOrigin(t *testing.T) {
 	}
 }
 
-func TestValidateKeyPublicKey(t *testing.T) {
+func TestKeysEndpoint(t *testing.T) {
 	s := testServer(t)
-	dir := t.TempDir()
-	pub := filepath.Join(dir, "id_ed25519.pub")
-	os.WriteFile(pub, []byte("ssh-ed25519 AAAA test@host\n"), 0644)
-
-	w := serve(s, loopbackReq(http.MethodPost, "/api/validate-key", `{"keyPath":"`+pub+`"}`))
+	w := serve(s, loopbackReq(http.MethodGet, "/api/keys", ""))
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
 	}
-	var resp map[string]any
-	json.Unmarshal(w.Body.Bytes(), &resp)
-	if resp["valid"] != true {
-		t.Errorf("expected valid=true for a 0644 .pub file, got %v (%v)", resp["valid"], resp["error"])
+	var resp struct {
+		Keys []map[string]any `json:"keys"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("bad json: %v", err)
+	}
+	// The list content depends on the host's ~/.ssh, but the shape must be a
+	// (possibly empty) array — never null or an error.
+	if resp.Keys == nil {
+		t.Error("expected a keys array (possibly empty), got null")
 	}
 }
 

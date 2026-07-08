@@ -5,33 +5,31 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-
-	"wedge/internal/config"
 )
 
-var (
-	challengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
-	namespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
-	companyRegex   = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
-)
+// challengeRegex bounds the one-time challenge to a URL-safe token. This is a
+// security boundary and must stay byte-identical to the RP's challenge format.
+var challengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
 
+// SignPolicyInput is the decision input for a single wedge:// sign. Under the
+// namespace==origin model the namespace is not a free-form tag: it is the RP's
+// canonical origin, so it is validated as an origin equivalent to the link's
+// origin — not against a character-class regex (which forbade the "/" a URL
+// needs). See docs/wedge-protocol.md.
 type SignPolicyInput struct {
-	Enabled        bool
-	Challenge      string
-	Namespace      string
-	Company        string
-	Origin         string
-	AllowedOrigins []string
-	OriginScopes   map[string][]config.OriginScope
+	Enabled   bool
+	Challenge string
+	Namespace string   // reported by the RP's challenge response
+	Origin    string   // from the wedge:// link (attacker-controllable lookup key)
+	Origins   []string // configured site allowlist
 }
 
 type SignPolicyResult struct {
-	OK                bool
-	Error             string
-	Origin            string
-	ExpectedNamespace string
-	ExpectedCompany   string
-	Challenge         string
+	OK        bool
+	Error     string
+	Origin    string // normalized link origin
+	Namespace string // the value to sign with (the RP's reported namespace)
+	Challenge string
 }
 
 func NormalizeOrigin(value string) string {
@@ -43,22 +41,10 @@ func NormalizeOrigin(value string) string {
 	return u.Scheme + "://" + u.Host
 }
 
-func NormalizeNamespace(value string) string {
-	v := strings.TrimSpace(value)
-	if namespaceRegex.MatchString(v) {
-		return v
-	}
-	return ""
-}
-
-func NormalizeCompany(value string) string {
-	v := strings.TrimSpace(value)
-	if companyRegex.MatchString(v) {
-		return v
-	}
-	return ""
-}
-
+// EquivalentOrigins returns origin plus its localhost↔127.0.0.1 alias, preserving
+// scheme and port. This is the equivalence used for both allowlist matching and
+// the namespace==origin check, so a link using localhost and an RP reporting
+// 127.0.0.1 (or vice versa) still line up.
 func EquivalentOrigins(origin string) []string {
 	origins := []string{origin}
 	u, err := url.Parse(origin)
@@ -83,6 +69,17 @@ func EquivalentOrigins(origin string) []string {
 	return origins
 }
 
+// originsEquivalent reports whether a and b are the same origin up to the
+// localhost↔127.0.0.1 alias. Both must already be normalized origins.
+func originsEquivalent(a, b string) bool {
+	for _, cand := range EquivalentOrigins(a) {
+		if cand == b {
+			return true
+		}
+	}
+	return false
+}
+
 func EvaluateSignPolicy(input SignPolicyInput) SignPolicyResult {
 	if !input.Enabled {
 		return SignPolicyResult{OK: false, Error: "Signing is disabled"}
@@ -90,7 +87,6 @@ func EvaluateSignPolicy(input SignPolicyInput) SignPolicyResult {
 
 	challenge := strings.TrimSpace(input.Challenge)
 	namespace := strings.TrimSpace(input.Namespace)
-	company := strings.TrimSpace(input.Company)
 	origin := NormalizeOrigin(strings.TrimSpace(input.Origin))
 
 	if challenge == "" || namespace == "" || origin == "" {
@@ -101,17 +97,10 @@ func EvaluateSignPolicy(input SignPolicyInput) SignPolicyResult {
 		return SignPolicyResult{OK: false, Error: "Invalid challenge format"}
 	}
 
-	if NormalizeNamespace(namespace) == "" {
-		return SignPolicyResult{OK: false, Error: "Invalid namespace format"}
-	}
-	if company != "" && NormalizeCompany(company) == "" {
-		return SignPolicyResult{OK: false, Error: "Invalid company format"}
-	}
-
-	// Check origin against allowlist
+	// Origin must be in the configured allowlist (the security boundary).
 	matchedOrigin := ""
 	for _, candidate := range EquivalentOrigins(origin) {
-		for _, allowed := range input.AllowedOrigins {
+		for _, allowed := range input.Origins {
 			if candidate == allowed {
 				matchedOrigin = candidate
 				break
@@ -125,82 +114,22 @@ func EvaluateSignPolicy(input SignPolicyInput) SignPolicyResult {
 		return SignPolicyResult{OK: false, Error: fmt.Sprintf("Origin not allowed: %s", origin)}
 	}
 
-	// Find scopes for origin
-	var expectedScopes []config.OriginScope
-	for _, candidate := range EquivalentOrigins(origin) {
-		if scopes, ok := input.OriginScopes[candidate]; ok {
-			expectedScopes = scopes
-			break
-		}
-	}
-	if len(expectedScopes) == 0 {
-		return SignPolicyResult{OK: false, Error: fmt.Sprintf("No namespace configured for origin: %s", origin)}
-	}
-
-	// Check namespace match
-	var namespaceMatches []config.OriginScope
-	for _, scope := range expectedScopes {
-		if strings.TrimSpace(scope.Namespace) == namespace {
-			namespaceMatches = append(namespaceMatches, scope)
-		}
-	}
-	if len(namespaceMatches) == 0 {
-		configuredNamespaces := []string{}
-		seen := map[string]bool{}
-		for _, scope := range expectedScopes {
-			ns := strings.TrimSpace(scope.Namespace)
-			if ns != "" && !seen[ns] {
-				configuredNamespaces = append(configuredNamespaces, ns)
-				seen[ns] = true
-			}
-		}
-		expectedNS := "<none>"
-		if len(configuredNamespaces) > 0 {
-			expectedNS = configuredNamespaces[0]
-		}
-		receivedNS := namespace
-		if receivedNS == "" {
-			receivedNS = "<empty>"
-		}
+	// namespace==origin: the RP's reported namespace, parsed as an origin, must be
+	// equivalent to the link origin. This keeps every signature origin-bound
+	// (non-replayable across sites) and rejects an RP that claims a foreign or
+	// shared namespace.
+	nsOrigin := NormalizeOrigin(namespace)
+	if nsOrigin == "" || !originsEquivalent(origin, nsOrigin) {
 		return SignPolicyResult{
 			OK:    false,
-			Error: fmt.Sprintf("ERROR\nExpected Namespace: %s\nReceived Namespace: %s", expectedNS, receivedNS),
+			Error: fmt.Sprintf("ERROR\nExpected Namespace: %s\nReceived Namespace: %s", origin, namespace),
 		}
 	}
-
-	// Check company match
-	var matchingScope *config.OriginScope
-	for i, scope := range namespaceMatches {
-		expectedCompany := strings.TrimSpace(scope.Company)
-		if expectedCompany == "" {
-			matchingScope = &namespaceMatches[i]
-			break
-		}
-		if company == expectedCompany {
-			matchingScope = &namespaceMatches[i]
-			break
-		}
-	}
-	if matchingScope == nil {
-		expectedCompany := strings.TrimSpace(namespaceMatches[0].Company)
-		receivedCompany := company
-		if receivedCompany == "" {
-			receivedCompany = "<empty>"
-		}
-		return SignPolicyResult{
-			OK:    false,
-			Error: fmt.Sprintf("ERROR\nExpected Company: %s\nReceived Company: %s", expectedCompany, receivedCompany),
-		}
-	}
-
-	resultNS := strings.TrimSpace(matchingScope.Namespace)
-	resultCompany := strings.TrimSpace(matchingScope.Company)
 
 	return SignPolicyResult{
-		OK:                true,
-		Origin:            origin,
-		ExpectedNamespace: resultNS,
-		ExpectedCompany:   resultCompany,
-		Challenge:         challenge,
+		OK:        true,
+		Origin:    origin,
+		Namespace: namespace, // sign with exactly what the RP reported
+		Challenge: challenge,
 	}
 }

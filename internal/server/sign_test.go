@@ -12,10 +12,11 @@ import (
 	"time"
 
 	"wedge/internal/config"
+	"wedge/internal/keyutil"
 	"wedge/internal/rp"
 )
 
-// genKey creates a throwaway ed25519 keypair and returns the private-key path.
+// genKey creates a throwaway ed25519 keypair and returns (private, public) paths.
 func genKey(t *testing.T) (priv, pub string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -41,31 +42,41 @@ func sshVerify(t *testing.T, challenge, signature, namespace, pubKey string) boo
 }
 
 func strForReader(s string) *os.File {
-	// small helper: write to a pipe so ssh-keygen reads challenge on stdin
 	r, w, _ := os.Pipe()
 	go func() { w.WriteString(s); w.Close() }()
 	return r
 }
 
 // stubRP stands in for a relying party: discovery + challenge + real verify.
-func stubRP(t *testing.T, namespace, pubKey string, hit *bool) *httptest.Server {
+// If nsOverride is "" it reports namespace == its own origin (the namespace==origin
+// contract); a non-empty override lets a test simulate a misbehaving RP.
+func stubRP(t *testing.T, nsOverride, pubKey string, verifyHit, contacted *bool) *httptest.Server {
 	t.Helper()
 	mux := http.NewServeMux()
 	var srv *httptest.Server
+	ns := func() string {
+		if nsOverride != "" {
+			return nsOverride
+		}
+		return srv.URL
+	}
 	mux.HandleFunc("/.well-known/wedge.json", func(w http.ResponseWriter, r *http.Request) {
+		if contacted != nil {
+			*contacted = true
+		}
 		json.NewEncoder(w).Encode(rp.Discovery{
-			Version: 1, Namespace: namespace,
+			Version: 1, Namespace: ns(),
 			ChallengeURL: srv.URL + "/ch", VerifyURL: srv.URL + "/verify",
 		})
 	})
 	mux.HandleFunc("/ch", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(rp.Challenge{Challenge: "AbCdEfGhIjKlMnOp_1234", Namespace: namespace})
+		json.NewEncoder(w).Encode(rp.Challenge{Challenge: "AbCdEfGhIjKlMnOp_1234", Namespace: ns()})
 	})
 	mux.HandleFunc("/verify", func(w http.ResponseWriter, r *http.Request) {
 		var b rp.VerifyRequest
 		json.NewDecoder(r.Body).Decode(&b)
 		if sshVerify(t, b.Challenge, b.Signature, b.Namespace, pubKey) {
-			*hit = true
+			*verifyHit = true
 			json.NewEncoder(w).Encode(map[string]any{"ok": true})
 			return
 		}
@@ -77,20 +88,23 @@ func stubRP(t *testing.T, namespace, pubKey string, hit *bool) *httptest.Server 
 	return srv
 }
 
-func signTestServer(t *testing.T, origin, priv string) *Server {
+// newSignServer builds a server with the given sites and a fixed set of
+// agent-loaded keys (paths of throwaway private keys), bypassing real discovery.
+func newSignServer(t *testing.T, sites []config.Site, keyPaths ...string) *Server {
 	t.Helper()
 	dir := t.TempDir()
 	m, err := config.NewManagerWithPath(filepath.Join(dir, "config.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Update(func(c *config.Config) {
-		c.KeyPath = priv
-		c.AllowedOrigins = []string{origin}
-		c.OriginScopes = map[string][]config.OriginScope{origin: {{Namespace: "ns"}}}
-	})
-	web := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}}
-	return New(m, web)
+	m.Update(func(c *config.Config) { c.Sites = sites })
+	s := New(m, fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}})
+	keys := make([]keyutil.DiscoveredKey, len(keyPaths))
+	for i, p := range keyPaths {
+		keys[i] = keyutil.DiscoveredKey{Path: p, Comment: filepath.Base(filepath.Dir(p)), Fingerprint: "SHA256:test", AgentLoaded: true}
+	}
+	s.signableKeys = func() ([]keyutil.DiscoveredKey, error) { return keys, nil }
+	return s
 }
 
 // autoRespond waits for a parked consent and answers it.
@@ -112,8 +126,8 @@ func TestSignFlowEndToEnd(t *testing.T) {
 	pubKey, _ := os.ReadFile(pub)
 
 	var verifyHit bool
-	rpSrv := stubRP(t, "ns", string(pubKey), &verifyHit)
-	s := signTestServer(t, rpSrv.URL, priv)
+	rpSrv := stubRP(t, "", string(pubKey), &verifyHit, nil)
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL}}, priv)
 
 	autoRespond(s, "allow")
 	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
@@ -121,11 +135,12 @@ func TestSignFlowEndToEnd(t *testing.T) {
 	if !verifyHit {
 		t.Fatal("RP verify endpoint was never hit with a valid signature")
 	}
-	if got := len(s.log.snapshot()); got != 1 {
-		t.Fatalf("expected 1 sign-log entry, got %d", got)
+	ents := s.log.snapshot()
+	if len(ents) != 1 {
+		t.Fatalf("expected 1 sign-log entry, got %d", len(ents))
 	}
-	if ent := s.log.snapshot()[0]; ent.Namespace != "ns" || ent.Approval != "allow-once" {
-		t.Errorf("unexpected log entry: %+v", ent)
+	if ents[0].Namespace != rpSrv.URL || ents[0].Approval != "allow-once" || ents[0].Key == "" {
+		t.Errorf("unexpected log entry: %+v", ents[0])
 	}
 }
 
@@ -135,8 +150,8 @@ func TestSignFlowDenied(t *testing.T) {
 	pubKey, _ := os.ReadFile(pub)
 
 	var verifyHit bool
-	rpSrv := stubRP(t, "ns", string(pubKey), &verifyHit)
-	s := signTestServer(t, rpSrv.URL, priv)
+	rpSrv := stubRP(t, "", string(pubKey), &verifyHit, nil)
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL}}, priv)
 
 	autoRespond(s, "deny")
 	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
@@ -149,15 +164,88 @@ func TestSignFlowDenied(t *testing.T) {
 	}
 }
 
-func TestSignFlowUnconfiguredOriginNoNetwork(t *testing.T) {
+func TestSignFlowNewSiteAdded(t *testing.T) {
 	t.Setenv("WEDGE_NO_BROWSER", "1")
-	priv, _ := genKey(t)
-	// Origin not in the allowlist -> must return immediately, never parking consent.
-	s := signTestServer(t, "https://acme.example", priv)
-	autoRespond(s, "allow") // should never fire
-	s.runSign("wedge://sign?v=1&origin=" + urlEnc("https://evil.example") + "&request_id=req1")
-	if p := s.consent.head(); p != nil {
-		t.Error("unconfigured origin must not park a consent request")
+	priv, pub := genKey(t)
+	pubKey, _ := os.ReadFile(pub)
+
+	var verifyHit bool
+	rpSrv := stubRP(t, "", string(pubKey), &verifyHit, nil)
+	s := newSignServer(t, nil, priv) // origin NOT configured
+
+	autoRespond(s, "add-allow")
+	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
+
+	if !verifyHit {
+		t.Fatal("add-allow should have added the site and signed")
+	}
+	sites := s.configMgr.Get().Sites
+	if len(sites) != 1 || sites[0].Origin != rpSrv.URL {
+		t.Errorf("new site not persisted: %+v", sites)
+	}
+}
+
+func TestSignFlowNewSiteDeniedNoNetwork(t *testing.T) {
+	t.Setenv("WEDGE_NO_BROWSER", "1")
+	priv, pub := genKey(t)
+	pubKey, _ := os.ReadFile(pub)
+
+	var verifyHit, contacted bool
+	rpSrv := stubRP(t, "", string(pubKey), &verifyHit, &contacted)
+	s := newSignServer(t, nil, priv) // origin NOT configured
+
+	autoRespond(s, "deny")
+	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
+
+	if contacted {
+		t.Error("declined new site must not contact the RP (no network before Add)")
+	}
+	if verifyHit {
+		t.Error("declined new site must not sign")
+	}
+	if got := len(s.configMgr.Get().Sites); got != 0 {
+		t.Errorf("declined new site must not be added, got %d sites", got)
+	}
+}
+
+func TestSignFlowRejectsForeignNamespace(t *testing.T) {
+	t.Setenv("WEDGE_NO_BROWSER", "1")
+	priv, pub := genKey(t)
+	pubKey, _ := os.ReadFile(pub)
+
+	var verifyHit bool
+	// RP reports a namespace bound to a DIFFERENT origin — must be rejected.
+	rpSrv := stubRP(t, "http://evil.example", string(pubKey), &verifyHit, nil)
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL}}, priv)
+
+	autoRespond(s, "allow")
+	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
+
+	if verifyHit {
+		t.Error("a namespace that isn't the origin must be rejected before signing")
+	}
+}
+
+func TestSignFlowTriesNextKey(t *testing.T) {
+	t.Setenv("WEDGE_NO_BROWSER", "1")
+	wrongPriv, _ := genKey(t)
+	rightPriv, rightPub := genKey(t)
+	rightPubKey, _ := os.ReadFile(rightPub)
+
+	var verifyHit bool
+	// Only the RIGHT key's public key is registered at the RP.
+	rpSrv := stubRP(t, "", string(rightPubKey), &verifyHit, nil)
+	// Wrong key first — the RP rejects it, try-next should fall through to the right one.
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL}}, wrongPriv, rightPriv)
+
+	autoRespond(s, "allow")
+	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
+
+	if !verifyHit {
+		t.Fatal("try-next should have fallen through to the accepted key")
+	}
+	if got := len(s.log.snapshot()); got != 1 {
+		t.Fatalf("expected 1 successful sign, got %d", got)
 	}
 }
 
@@ -167,29 +255,17 @@ func TestSignFlowSilentSkipsConsent(t *testing.T) {
 	pubKey, _ := os.ReadFile(pub)
 
 	var verifyHit bool
-	rpSrv := stubRP(t, "ns", string(pubKey), &verifyHit)
+	rpSrv := stubRP(t, "", string(pubKey), &verifyHit, nil)
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL, Silent: true}}, priv)
 
-	dir := t.TempDir()
-	m, err := config.NewManagerWithPath(filepath.Join(dir, "config.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m.Update(func(c *config.Config) {
-		c.KeyPath = priv
-		c.AllowedOrigins = []string{rpSrv.URL}
-		// silent = the advanced per-site opt-in: sign without a presence tap.
-		c.OriginScopes = map[string][]config.OriginScope{rpSrv.URL: {{Namespace: "ns", Silent: true}}}
-	})
-	s := New(m, fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}})
-
-	// No autoRespond: a silent scope must NOT park a consent request.
+	// No autoRespond: a silent site must NOT park a consent request.
 	s.runSign("wedge://sign?v=1&origin=" + urlEnc(rpSrv.URL) + "&request_id=req1")
 
 	if !verifyHit {
-		t.Fatal("silent scope should have signed and delivered")
+		t.Fatal("silent site should have signed and delivered")
 	}
 	if s.consent.head() != nil {
-		t.Error("silent scope must not park a consent request")
+		t.Error("silent site must not park a consent request")
 	}
 	if ents := s.log.snapshot(); len(ents) != 1 || ents[0].Approval != "silent" {
 		t.Errorf("expected one 'silent' log entry, got %+v", ents)
@@ -218,7 +294,6 @@ func TestConsentBrokerRespond(t *testing.T) {
 }
 
 func urlEnc(s string) string {
-	// minimal query-escape for the origin
 	out := ""
 	for _, r := range s {
 		switch r {

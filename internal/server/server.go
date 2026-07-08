@@ -24,7 +24,7 @@ import (
 	"wedge/internal/keyutil"
 )
 
-const Version = "0.1.0"
+const Version = "0.1.1"
 
 // signLogCap bounds the in-memory sign log so it can't grow without limit.
 const signLogCap = 500
@@ -36,19 +36,23 @@ type Server struct {
 	listener   net.Listener
 	log        *signLog
 	consent    *consentBroker
+	// signableKeys is the source of agent-loaded keys the sign path tries, in
+	// order. Defaults to keyutil.SignableKeys; overridable in tests.
+	signableKeys func() ([]keyutil.DiscoveredKey, error)
 }
 
 func New(configMgr *config.Manager, web fs.FS) *Server {
 	s := &Server{
-		configMgr: configMgr,
-		web:       web,
-		log:       &signLog{},
-		consent:   newConsentBroker(),
+		configMgr:    configMgr,
+		web:          web,
+		log:          &signLog{},
+		consent:      newConsentBroker(),
+		signableKeys: keyutil.SignableKeys,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/enabled", s.handleEnabled)
-	mux.HandleFunc("/api/validate-key", s.handleValidateKey)
+	mux.HandleFunc("/api/keys", s.handleKeys)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)
 	mux.HandleFunc("/api/pending", s.handlePending)
@@ -104,9 +108,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		err := s.configMgr.Update(func(c *config.Config) {
 			c.Enabled = cfg.Enabled
-			c.KeyPath = cfg.KeyPath
-			c.AllowedOrigins = cfg.AllowedOrigins
-			c.OriginScopes = cfg.OriginScopes
+			c.Sites = cfg.Sites
 			if cfg.ServerPort > 0 {
 				c.ServerPort = cfg.ServerPort
 			}
@@ -140,27 +142,20 @@ func (s *Server) handleEnabled(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "config": s.configMgr.Get()})
 }
 
-func (s *Server) handleValidateKey(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+// handleKeys returns the SSH keys discovered in ~/.ssh, each with whether its
+// private half is loaded in the ssh-agent (only those can sign). This is public
+// key metadata only — path, type, comment, fingerprint — never private material.
+func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var body struct {
-		KeyPath string `json:"keyPath"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"valid": false, "error": "invalid request body"})
+	keys, err := keyutil.DiscoverKeys()
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"keys": []any{}, "error": err.Error()})
 		return
 	}
-	keyPath := body.KeyPath
-	if strings.TrimSpace(keyPath) == "" {
-		keyPath = s.configMgr.Get().KeyPath
-	}
-	if err := keyutil.ValidateSigningIdentity(keyPath); err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": err.Error()})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"valid": true, "error": ""})
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +187,7 @@ type SignLogEntry struct {
 	Origin    string `json:"origin"`
 	Namespace string `json:"namespace"`
 	Approval  string `json:"approval"` // "allow-once" | "always-allow" | "silent"
+	Key       string `json:"key"`      // which agent key signed (comment or fingerprint)
 }
 
 type signLog struct {

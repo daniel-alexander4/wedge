@@ -17,7 +17,10 @@ const DefaultTimeout = 10 * time.Second
 
 var (
 	challengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
-	namespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+	// namespace is now the RP's canonical origin (namespace==origin), so it may
+	// contain the "://" and "/" of a URL. Still a bounded, injection-safe set —
+	// it is only ever passed to ssh-keygen as an argv value, never a shell.
+	namespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:/-]{1,255}$`)
 )
 
 func Sign(challenge, namespace, keyPath string, timeout time.Duration) (string, error) {

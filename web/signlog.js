@@ -16,7 +16,7 @@ async function showSignLog() {
     }
     entries.forEach(function (e) {
       var tr = document.createElement('tr');
-      [e.time, e.origin, e.namespace, e.approval].forEach(function (v) {
+      [e.time, e.origin, e.key, e.approval].forEach(function (v) {
         var td = document.createElement('td');
         td.textContent = v || '';
         tr.appendChild(td);

@@ -11,8 +11,8 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.Enabled {
 		t.Error("expected enabled=true by default")
 	}
-	if cfg.KeyPath != DefaultKeyPath {
-		t.Errorf("expected keyPath=%q, got %q", DefaultKeyPath, cfg.KeyPath)
+	if len(cfg.Sites) != 0 {
+		t.Errorf("expected no sites by default, got %v", cfg.Sites)
 	}
 	if cfg.ServerPort != DefaultServerPort {
 		t.Errorf("expected port=%d, got %d", DefaultServerPort, cfg.ServerPort)
@@ -29,11 +29,7 @@ func TestCreateLoadSaveRoundtrip(t *testing.T) {
 	}
 
 	m.Update(func(c *Config) {
-		c.KeyPath = "~/.ssh/id_rsa"
-		c.AllowedOrigins = []string{"http://localhost:3000"}
-		c.OriginScopes = map[string][]OriginScope{
-			"http://localhost:3000": {{Namespace: "dev"}},
-		}
+		c.Sites = []Site{{Origin: "http://localhost:3000", AlwaysAllow: true}}
 		c.ServerPort = 9999
 	})
 
@@ -42,18 +38,44 @@ func TestCreateLoadSaveRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := m2.Get()
-	if cfg.KeyPath != "~/.ssh/id_rsa" {
-		t.Errorf("keyPath mismatch: %q", cfg.KeyPath)
-	}
-	if len(cfg.AllowedOrigins) != 1 || cfg.AllowedOrigins[0] != "http://localhost:3000" {
-		t.Errorf("allowedOrigins mismatch: %v", cfg.AllowedOrigins)
-	}
 	if cfg.ServerPort != 9999 {
 		t.Errorf("port mismatch: %d", cfg.ServerPort)
 	}
-	scopes := cfg.OriginScopes["http://localhost:3000"]
-	if len(scopes) != 1 || scopes[0].Namespace != "dev" {
-		t.Errorf("originScopes mismatch: %v", cfg.OriginScopes)
+	if len(cfg.Sites) != 1 || cfg.Sites[0].Origin != "http://localhost:3000" || !cfg.Sites[0].AlwaysAllow {
+		t.Errorf("sites mismatch: %v", cfg.Sites)
+	}
+}
+
+func TestMigratesLegacyConfig(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	legacy := `{
+	  "enabled": true,
+	  "keyPath": "~/.ssh/id_ed25519.pub",
+	  "allowedOrigins": ["http://a.example", "http://b.example"],
+	  "originScopes": {
+	    "http://a.example": [{"namespace": "a", "alwaysAllow": true}],
+	    "http://b.example": [{"namespace": "b", "silent": true}]
+	  },
+	  "serverPort": 7890
+	}`
+	if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	m, err := NewManagerWithPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := m.Get()
+	if len(cfg.Sites) != 2 {
+		t.Fatalf("expected 2 migrated sites, got %v", cfg.Sites)
+	}
+	// allowedOrigins order is preserved.
+	if cfg.Sites[0].Origin != "http://a.example" || !cfg.Sites[0].AlwaysAllow {
+		t.Errorf("site 0 mismatch: %+v", cfg.Sites[0])
+	}
+	if cfg.Sites[1].Origin != "http://b.example" || !cfg.Sites[1].Silent {
+		t.Errorf("site 1 mismatch: %+v", cfg.Sites[1])
 	}
 }
 

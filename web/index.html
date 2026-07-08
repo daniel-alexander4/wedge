@@ -18,11 +18,11 @@
         <div id="setup-checklist" class="checklist" hidden>
           <div class="checklist-item" id="check-key">
             <span class="check-icon" id="check-key-icon"></span>
-            <span id="check-key-label">SSH key</span>
+            <span id="check-key-label">SSH keys</span>
           </div>
           <div class="checklist-item" id="check-origins">
             <span class="check-icon" id="check-origins-icon"></span>
-            <span id="check-origins-label">Target systems</span>
+            <span id="check-origins-label">Sites</span>
           </div>
           <div class="checklist-item" id="check-server">
             <span class="check-icon" id="check-server-icon"></span>
@@ -31,7 +31,7 @@
         </div>
 
         <div id="no-origins-warning" class="warning-box" hidden>
-          No target systems configured. wedge cannot sign challenges until at least one target system is added below.
+          No sites configured. wedge will ask before signing into a new site the first time — or add sites here.
         </div>
 
         <div class="row">
@@ -39,18 +39,13 @@
           <button id="toggle-enabled" aria-pressed="true">On</button>
         </div>
         <div class="field">
-          <label for="key-path">SSH key path</label>
-          <div class="tabs" role="tablist" aria-label="Key type">
-            <button class="tab-btn" type="button" data-key-type="ed25519" aria-pressed="true">Ed25519</button>
-            <button class="tab-btn" type="button" data-key-type="rsa" aria-pressed="false">RSA</button>
-            <button class="tab-btn" type="button" data-key-type="ecdsa" aria-pressed="false">ECDSA</button>
-          </div>
-          <input id="key-path" type="text" placeholder="~/.ssh/id_ed25519" />
+          <label>SSH keys <span class="field-hint">from ~/.ssh — any agent-loaded key can sign any site</span></label>
+          <div id="keys-list" class="keys-list"></div>
         </div>
         <div class="field">
-          <label>Target systems</label>
+          <label>Sites <span class="field-hint">URLs wedge may sign into</span></label>
           <div id="origin-rows"></div>
-          <button id="add-origin-row" class="secondary" type="button">+ Add target</button>
+          <button id="add-origin-row" class="secondary" type="button">+ Add site</button>
           <div id="origin-row-errors" class="field-error" hidden></div>
         </div>
         <div class="field">
@@ -72,7 +67,7 @@
         <h1>Sign log</h1>
         <table class="signlog-table">
           <thead>
-            <tr><th>Time</th><th>Origin</th><th>Namespace</th><th>Approved via</th></tr>
+            <tr><th>Time</th><th>Site</th><th>Key</th><th>Approved via</th></tr>
           </thead>
           <tbody id="signlog-body"></tbody>
         </table>
@@ -98,17 +93,8 @@
               <span class="step-status" id="step-1-status"></span>
             </div>
             <div class="step-body">
-              <p>Select your SSH key type or enter a custom path:</p>
-              <div class="tabs" role="tablist" aria-label="Key type">
-                <button class="tab-btn" type="button" data-key-type="ed25519" data-onboarding aria-pressed="true">Ed25519</button>
-                <button class="tab-btn" type="button" data-key-type="rsa" data-onboarding aria-pressed="false">RSA</button>
-                <button class="tab-btn" type="button" data-key-type="ecdsa" data-onboarding aria-pressed="false">ECDSA</button>
-              </div>
-              <input id="onboarding-key-path" type="text" placeholder="~/.ssh/id_ed25519" value="~/.ssh/id_ed25519" />
-              <div class="step-actions">
-                <button id="validate-key-btn" type="button">Validate Key</button>
-              </div>
-              <div id="key-result" class="step-result" hidden></div>
+              <p>wedge signs with the SSH keys already in your <code>~/.ssh</code> directory. Keys loaded into your ssh-agent are used automatically — any of them can sign into any site.</p>
+              <div id="onboarding-keys-list" class="keys-list"></div>
             </div>
           </div>
 
@@ -120,9 +106,9 @@
               <span class="step-status" id="step-2-status"></span>
             </div>
             <div class="step-body">
-              <p>Add each target system that uses SSH login. Enter the host, optional port, and namespace.</p>
+              <p>Add the first site (URL) wedge may sign into. wedge will offer to add any other site the first time you sign into it.</p>
               <div id="onboarding-origin-rows"></div>
-              <button id="onboarding-add-origin-row" class="secondary" type="button">+ Add target</button>
+              <button id="onboarding-add-origin-row" class="secondary" type="button">+ Add site</button>
               <div id="onboarding-origin-row-errors" class="field-error" hidden></div>
             </div>
           </div>
@@ -154,16 +140,8 @@
         <p id="consent-minimal-line" class="consent-minimal-line" hidden></p>
         <div class="consent-fields" id="consent-detail">
           <div class="consent-field">
-            <label>Origin</label>
+            <label>Site</label>
             <span id="consent-origin"></span>
-          </div>
-          <div class="consent-field">
-            <label>Namespace</label>
-            <span id="consent-namespace"></span>
-          </div>
-          <div class="consent-field" id="consent-company-row">
-            <label>Company</label>
-            <span id="consent-company"></span>
           </div>
           <div class="consent-field">
             <label>Challenge</label>
