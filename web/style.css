@@ -1,7 +1,8 @@
-/* wedge UI — slate/emerald/indigo palette (dark-only), derived from the wedge
-   icon set (build/icons/): slate chrome, indigo as the interactive accent,
-   emerald for success — the mark's gradient endpoints. Every colour flows
-   through the :root vars below, so the whole UI re-themes by swapping them. */
+/* wedge UI — slate/mint/indigo palette (dark-only), derived from the wedge
+   icon set (build/icons/): slate chrome, mint as the primary interactive
+   accent, indigo as the secondary (form controls), deep emerald for success
+   so done-states stay distinct from mint CTAs. Every colour flows through
+   the :root vars below, so the whole UI re-themes by swapping them. */
 :root {
   --base: #0f172a;      /* window/page background (the icon tiles' slate) */
   --mantle: #1e293b;    /* bars, cards, panels */
@@ -13,13 +14,14 @@
   --text: #e2e8f0;      /* primary text */
   --subtext0: #94a3b8;  /* muted text */
   --subtext1: #cbd5e1;  /* brighter muted text */
-  --green: #6ee7b7;     /* success (the mark's emerald) */
+  --green: #10b981;     /* success — deep emerald, distinct from the mint accent */
   --red: #f43f5e;       /* error / destructive (wedge-error rose) */
   --yellow: #f59e0b;    /* warning (wedge-pending amber) */
-  --indigo: #818cf8;    /* the mark's indigo */
+  --mint: #6ee7b7;      /* the mark's mint */
+  --indigo: #818cf8;    /* the mark's indigo — secondary accent (form controls) */
 
-  --accent: var(--indigo);       /* wedge's signature interactive accent */
-  --accent-hover: #a5b4fc;
+  --accent: var(--mint);         /* wedge's signature interactive accent */
+  --accent-hover: #a7f3d0;
   --accent-fg: var(--crust);     /* dark text on the light accent fill */
 
   --radius-sm: 6px;
@@ -89,7 +91,7 @@ h1 { margin: 0 0 10px; font-size: 16px; font-weight: 600; }
 }
 .status.status-success {
   border-color: var(--green);
-  background: rgba(110, 231, 183, 0.12);
+  background: rgba(16, 185, 129, 0.12);
   color: var(--green);
 }
 .status.status-error {
@@ -133,7 +135,7 @@ input {
   padding: 7px 9px;
   font: inherit;
 }
-input:focus { border-color: var(--accent); outline: none; }
+input:focus { border-color: var(--indigo); outline: none; }
 input[type="number"] {
   width: 120px;
 }
@@ -206,7 +208,7 @@ button[aria-pressed="false"] {
   flex-shrink: 0;
 }
 .check-icon.pass {
-  background: rgba(110, 231, 183, 0.12);
+  background: rgba(16, 185, 129, 0.12);
   border: 1px solid var(--green);
   color: var(--green);
 }
@@ -250,7 +252,7 @@ button[aria-pressed="false"] {
   width: auto;
   flex: none;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--indigo);
 }
 .origin-row .remove-row-btn {
   background: transparent;
@@ -320,7 +322,7 @@ button[aria-pressed="false"] {
   border-radius: 999px;
   white-space: nowrap;
 }
-.key-badge.loaded { background: rgba(110, 231, 183, 0.18); color: var(--green); }
+.key-badge.loaded { background: rgba(16, 185, 129, 0.18); color: var(--green); }
 .key-badge.not-loaded { background: var(--surface1); color: var(--subtext0); }
 
 .site-tools {
@@ -398,7 +400,7 @@ button[aria-pressed="false"] {
   flex-shrink: 0;
 }
 .step.done .step-number {
-  background: rgba(110, 231, 183, 0.12);
+  background: rgba(16, 185, 129, 0.12);
   border-color: var(--green);
   color: var(--green);
 }
@@ -424,7 +426,7 @@ button[aria-pressed="false"] {
 }
 .step-result.result-pass {
   border: 1px solid var(--green);
-  background: rgba(110, 231, 183, 0.12);
+  background: rgba(16, 185, 129, 0.12);
   color: var(--green);
 }
 .step-result.result-fail {
