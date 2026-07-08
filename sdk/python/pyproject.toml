@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wedge-rp"
+version = "0.1.0"
+description = "Relying-party middleware for wedge: let users sign in to your site with their SSH key"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Daniel Alexander" }]
+keywords = ["wedge", "ssh", "sshsig", "authentication", "login", "passwordless"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Session",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/daniel-alexander4/wedge"
+Specification = "https://github.com/daniel-alexander4/wedge/blob/main/docs/wedge-spec-v1.md"
+
+[project.optional-dependencies]
+flask = ["flask>=2.0"]
+
+[tool.setuptools.packages.find]
+include = ["wedge_rp*"]
+
+[tool.setuptools.package-data]
+wedge_rp = ["static/*.js"]

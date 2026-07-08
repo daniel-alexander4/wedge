@@ -10,5 +10,9 @@ __pycache__/
 *.pyc
 native-host/__pycache__/
 
+# Python packaging artifacts (sdk/python; the root build/ is real content)
+*.egg-info/
+sdk/python/build/
+
 # Playwright MCP scratch (screenshots, snapshots, console logs)
 .playwright-mcp/
