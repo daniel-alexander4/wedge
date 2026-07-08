@@ -86,6 +86,27 @@ function createSiteRow(origin, alwaysAllow, silent) {
   silentLabel.appendChild(silentInput);
   silentLabel.appendChild(document.createTextNode('silent'));
 
+  var launchBtn = document.createElement('span');
+  launchBtn.className = 'launch-row-btn';
+  launchBtn.textContent = '↗';
+  launchBtn.setAttribute('role', 'button');
+  launchBtn.setAttribute('aria-label', 'Open site in browser');
+  launchBtn.title = 'Open this site in your default browser';
+  launchBtn.tabIndex = 0;
+  function launch() {
+    var raw = originInput.value.trim();
+    if (!raw) return;
+    var url = '';
+    try { url = new URL(raw).origin; } catch (e) { setStatus('Invalid site URL', 'error'); return; }
+    App.openSite(url)
+      .then(function () { setStatus('Opened ' + url, 'success'); })
+      .catch(function (err) { setStatus('Could not open: ' + (err.message || err), 'error'); });
+  }
+  launchBtn.addEventListener('click', launch);
+  launchBtn.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); launch(); }
+  });
+
   var removeBtn = document.createElement('span');
   removeBtn.className = 'remove-row-btn';
   removeBtn.textContent = '🗑';
@@ -107,6 +128,7 @@ function createSiteRow(origin, alwaysAllow, silent) {
   row.appendChild(originInput);
   row.appendChild(autoLabel);
   row.appendChild(silentLabel);
+  row.appendChild(launchBtn);
   row.appendChild(removeBtn);
   return row;
 }

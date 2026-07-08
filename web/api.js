@@ -32,6 +32,8 @@ window.App = {
   },
   // Discovered ~/.ssh public keys, each with whether it's loaded in the agent.
   getKeys: function () { return apiGet('/api/keys'); },
+  // Launch a configured site in the default browser (reuses a running instance).
+  openSite: function (origin) { return apiPost('/api/open', { origin: origin }); },
   getStatus: function () { return apiGet('/api/status'); },
   getSignLog: function () { return apiGet('/api/signlog'); },
 

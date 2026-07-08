@@ -44,6 +44,14 @@ func Open(url string) (*exec.Cmd, error) {
 	return cmd, cmd.Start()
 }
 
+// OpenTab opens url as an ordinary tab in the user's default browser, reusing a
+// running instance or launching one. Unlike Open it never uses chromeless
+// app-mode — this is for launching real sites, not wedge's own UI.
+func OpenTab(url string) error {
+	name, args := tabOpener(url)
+	return exec.Command(name, args...).Start()
+}
+
 // findChromium returns the first Chromium-family browser found for the OS.
 func findChromium() (string, bool) {
 	for _, c := range chromiumCandidates() {

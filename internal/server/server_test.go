@@ -124,6 +124,41 @@ func TestKeysEndpoint(t *testing.T) {
 	}
 }
 
+func TestOpenSite(t *testing.T) {
+	s := testServer(t) // configured site: https://acme.example
+	var opened string
+	s.openURL = func(u string) error { opened = u; return nil }
+
+	// A configured site opens.
+	w := serve(s, loopbackReq(http.MethodPost, "/api/open", `{"origin":"https://acme.example"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if opened != "https://acme.example" {
+		t.Errorf("expected configured site opened, got %q", opened)
+	}
+
+	// A non-configured origin is rejected and never opened.
+	opened = ""
+	w = serve(s, loopbackReq(http.MethodPost, "/api/open", `{"origin":"https://evil.example"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-configured site, got %d", w.Code)
+	}
+	if opened != "" {
+		t.Error("must not open a non-configured site")
+	}
+
+	// A non-http scheme is rejected (no scheme-handler gadget).
+	opened = ""
+	w = serve(s, loopbackReq(http.MethodPost, "/api/open", `{"origin":"wedge://sign"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-http scheme, got %d", w.Code)
+	}
+	if opened != "" {
+		t.Error("must not open a non-http scheme")
+	}
+}
+
 func TestSignLogEmpty(t *testing.T) {
 	s := testServer(t)
 	w := serve(s, loopbackReq(http.MethodGet, "/api/signlog", ""))

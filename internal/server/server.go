@@ -20,11 +20,12 @@ import (
 	"sync"
 	"time"
 
+	"wedge/internal/browser"
 	"wedge/internal/config"
 	"wedge/internal/keyutil"
 )
 
-const Version = "0.1.1"
+const Version = "0.1.2"
 
 // signLogCap bounds the in-memory sign log so it can't grow without limit.
 const signLogCap = 500
@@ -39,6 +40,9 @@ type Server struct {
 	// signableKeys is the source of agent-loaded keys the sign path tries, in
 	// order. Defaults to keyutil.SignableKeys; overridable in tests.
 	signableKeys func() ([]keyutil.DiscoveredKey, error)
+	// openURL opens a configured site in the default browser. Defaults to
+	// browser.OpenTab; overridable in tests so they don't spawn a browser.
+	openURL func(string) error
 }
 
 func New(configMgr *config.Manager, web fs.FS) *Server {
@@ -48,11 +52,13 @@ func New(configMgr *config.Manager, web fs.FS) *Server {
 		log:          &signLog{},
 		consent:      newConsentBroker(),
 		signableKeys: keyutil.SignableKeys,
+		openURL:      browser.OpenTab,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/enabled", s.handleEnabled)
 	mux.HandleFunc("/api/keys", s.handleKeys)
+	mux.HandleFunc("/api/open", s.handleOpen)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)
 	mux.HandleFunc("/api/pending", s.handlePending)

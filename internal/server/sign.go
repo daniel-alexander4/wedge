@@ -184,6 +184,39 @@ func (s *Server) handleHandoff(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleOpen launches a configured site in the user's default browser. It only
+// opens http(s) origins present in the sites list — never an arbitrary URL or
+// scheme — so it can't be turned into a local scheme-handler gadget (e.g.
+// xdg-open on wedge:// or file://). Loopback + same-origin guarded like the rest.
+func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Origin string `json:"origin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
+		return
+	}
+	origin := policy.NormalizeOrigin(strings.TrimSpace(body.Origin))
+	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "only http(s) URLs can be opened"})
+		return
+	}
+	site := findSite(s.configMgr.Get(), origin)
+	if site == nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not a configured site"})
+		return
+	}
+	if err := s.openURL(site.Origin); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // ---- orchestration ----
 
 // HandleSignURL processes a wedge:// link asynchronously.
