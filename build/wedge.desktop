@@ -5,7 +5,9 @@ Comment=SSH-key web authentication; launches your sites and SSH hosts
 Exec=wedge %u
 Icon=wedge
 Terminal=false
-Categories=Utility;Security;
+# No registered main category on purpose (X- prefix keeps the validator
+# happy): menus file wedge under their catch-all "Other" group.
+Categories=X-Other;
 MimeType=x-scheme-handler/wedge;
 StartupNotify=true
 # Matches `chromium --class=Wedge` (set in internal/browser) so the panel uses
