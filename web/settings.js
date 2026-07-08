@@ -126,8 +126,14 @@ function createSiteRow(origin, alwaysAllow, silent) {
       return;
     }
     // http(s): wedge signs in first, then opens the browser already logged in.
+    // Show the "approve in wedge" hint now; the request resolves with the final
+    // outcome (consent runs concurrently), which we then report.
+    setStatus('Signing in to ' + t.value + ' — approve in wedge…', '');
     App.signInThenOpen(t.value)
-      .then(function () { setStatus('Signing in to ' + t.value + ' — approve in wedge…', 'success'); })
+      .then(function (res) {
+        var msg = (res && res.message) || 'Done.';
+        setStatus(msg, res && res.status === 'success' ? 'success' : 'error');
+      })
       .catch(function (err) { setStatus('Could not sign in: ' + (err.message || err), 'error'); });
   }
   launchBtn.addEventListener('click', launch);
