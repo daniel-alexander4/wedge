@@ -191,10 +191,17 @@ def main() -> None:
     origin = args.origin or f"http://{args.host}:{args.port}"
     app = create_app(origin, _parse_users(args.user), db=args.db)
 
-    from wsgiref.simple_server import make_server
+    from socketserver import ThreadingMixIn
+    from wsgiref.simple_server import WSGIServer, make_server
+
+    # Threaded: a real browser parks idle keep-alive/preconnect sockets that
+    # would wedge a single-threaded server's accept loop. The stores are
+    # thread-safe, so this is free.
+    class ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+        daemon_threads = True
 
     print(f"wedge-rp demo on {origin} (login at {origin}/login)", file=sys.stderr)
-    make_server(args.host, args.port, app).serve_forever()
+    make_server(args.host, args.port, app, server_class=ThreadingWSGIServer).serve_forever()
 
 
 if __name__ == "__main__":
