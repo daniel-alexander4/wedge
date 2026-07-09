@@ -73,6 +73,10 @@ final class WedgeRP
      *   Enables keyless sign-in and the app-initiated flow. The posted key
      *   is only ever a selector: verification runs strictly against the keys
      *   you return (spec §5.2).
+     * @param string|null $registrationUrl The site's key-registration page,
+     *   advertised in discovery (spec §4) so authenticators can send a user
+     *   whose key isn't registered yet straight there. Must be same-origin
+     *   with $origin.
      */
     public function __construct(
         string $origin,
@@ -81,11 +85,17 @@ final class WedgeRP
         ?callable $findUserByPublicKey = null,
         private readonly float $challengeTtl = self::DEFAULT_CHALLENGE_TTL,
         private readonly float $verifyTimeout = Kernel::DEFAULT_TIMEOUT,
+        private readonly ?string $registrationUrl = null,
     ) {
         if ($findKeys === null && $findUserByPublicKey === null) {
             throw new \InvalidArgumentException('supply findKeys and/or findUserByPublicKey');
         }
         $this->origin = self::normalizeOrigin($origin);
+        if ($registrationUrl !== null
+            && $registrationUrl !== $this->origin
+            && !str_starts_with($registrationUrl, $this->origin . '/')) {
+            throw new \InvalidArgumentException('registrationUrl must be same-origin with origin');
+        }
         $this->findKeys = $findKeys;
         $this->findUserByPublicKey = $findUserByPublicKey;
     }
@@ -225,6 +235,18 @@ final class WedgeRP
         return ['ok' => false, 'error' => $message];
     }
 
+    /**
+     * The spec's unknown_key verify outcome (§5.2): no registered account
+     * matches the offered key. The authenticator uses the code to steer the
+     * user to registration_url once every key has been tried.
+     *
+     * @return array{ok: false, error: string, code: string}
+     */
+    private static function errorUnknownKey(string $message): array
+    {
+        return ['ok' => false, 'error' => $message, 'code' => 'unknown_key'];
+    }
+
     // -- endpoint handlers --------------------------------------------------------
 
     /**
@@ -234,12 +256,17 @@ final class WedgeRP
      */
     public function discovery(): array
     {
-        return [
+        $body = [
             'version' => 1,
             'namespace' => $this->origin,
             'challenge_url' => $this->origin . self::CHALLENGE_PATH,
             'verify_url' => $this->origin . self::VERIFY_PATH,
         ];
+        if ($this->registrationUrl !== null) {
+            $body['registration_url'] = $this->registrationUrl;
+        }
+
+        return $body;
     }
 
     /**
@@ -404,7 +431,7 @@ final class WedgeRP
                 $keys = [$keys];
             }
             if ($keys === null || $keys === []) {
-                return ['status' => 401, 'body' => self::error('no account matches')];
+                return ['status' => 401, 'body' => self::errorUnknownKey('no account matches')];
             }
 
             return [$record['username'], array_values($keys)];
@@ -416,14 +443,14 @@ final class WedgeRP
         }
         $match = ($this->findUserByPublicKey)($postedKey);
         if ($match === null) {
-            return ['status' => 401, 'body' => self::error('no account matches key')];
+            return ['status' => 401, 'body' => self::errorUnknownKey('no account matches key')];
         }
         [$username, $keys] = $match;
         if (is_string($keys)) {
             $keys = [$keys];
         }
         if (!is_string($username) || !preg_match(Kernel::PRINCIPAL_RE, $username) || $keys === []) {
-            return ['status' => 401, 'body' => self::error('no account matches key')];
+            return ['status' => 401, 'body' => self::errorUnknownKey('no account matches key')];
         }
 
         return [$username, array_values($keys)];

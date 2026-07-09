@@ -51,6 +51,9 @@ rp = WedgeRP(
     find_keys=find_keys,
     find_user_by_public_key=find_user_by_public_key,
     store=SQLiteStore("/var/lib/myapp/wedge.db"),  # shared across workers
+    # Optional: advertised in discovery — wedge sends users whose key isn't
+    # registered yet straight here (must be same-origin with origin).
+    registration_url="https://example.com/register",
 )
 
 # 3. Mount it. `login` runs inside a request context at the one moment a

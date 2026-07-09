@@ -29,6 +29,29 @@ function setStatus(text, level) {
   el.hidden = !text;
 }
 
+// showNotice pops the transient overlay for ~3 seconds, then runs action —
+// which the button also fires immediately on click (whichever comes first).
+// Used by the unregistered-key path before opening the RP's registration page.
+function showNotice(title, text, actionLabel, action) {
+  var overlay = document.getElementById('notice-overlay');
+  var btn = document.getElementById('notice-action');
+  document.getElementById('notice-title').textContent = title;
+  document.getElementById('notice-text').textContent = text;
+  btn.textContent = actionLabel;
+  var done = false;
+  function fire() {
+    if (done) return;
+    done = true;
+    overlay.hidden = true;
+    btn.removeEventListener('click', fire);
+    action();
+  }
+  btn.addEventListener('click', fire);
+  overlay.hidden = false;
+  btn.focus();
+  setTimeout(fire, 3000);
+}
+
 function renderToggle(enabled) {
   var btn = document.getElementById('toggle-enabled');
   if (!btn) return;
@@ -150,6 +173,23 @@ function createSiteRow(origin, alwaysAllow, silent) {
     setStatus('Signing in to ' + t.value + ' — approve in wedge…', '');
     App.signInThenOpen(t.value)
       .then(function (res) {
+        if (res && res.status === 'unregistered' && res.registrationUrl) {
+          // The RP has no account for this key. Give the user a moment to read
+          // why before the browser takes over, then open the registration page
+          // (same-origin with the site — the server re-validates on /api/open).
+          setStatus('', '');
+          showNotice(
+            'Key not registered',
+            'Your key isn’t registered at ' + t.value + ' yet — taking you to its key-registration page.',
+            'Open now',
+            function () {
+              App.openSite(res.registrationUrl)
+                .then(function () { setStatus('Opened the registration page for ' + t.value + ' — add your key there, then sign in again.', ''); })
+                .catch(function (err) { setStatus('Could not open the registration page: ' + (err.message || err), 'error'); });
+            }
+          );
+          return;
+        }
         var msg = (res && res.message) || 'Done.';
         setStatus(msg, res && res.status === 'success' ? 'success' : 'error');
       })

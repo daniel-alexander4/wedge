@@ -1,6 +1,6 @@
 # The wedge Protocol — Specification
 
-**Protocol version:** 1 · **Spec:** draft 2026-07-07 · **Status:** Draft
+**Protocol version:** 1 · **Spec:** draft 2026-07-08 · **Status:** Draft
 
 This document specifies the `wedge://` authentication protocol: a way for a
 website (the Relying Party) to authenticate a user by an SSH-key signature
@@ -95,7 +95,8 @@ GET <origin>/.well-known/wedge.json
     "version": 1,
     "namespace": "<the RP's canonical origin>",
     "challenge_url": "<origin>/wedge/challenge",
-    "verify_url": "<origin>/wedge/verify"
+    "verify_url": "<origin>/wedge/verify",
+    "registration_url": "<origin>/register"      // OPTIONAL
   }
 ```
 
@@ -103,11 +104,20 @@ RP requirements:
 - `version` MUST be `1`; `namespace`, `challenge_url`, `verify_url` are REQUIRED.
 - `namespace` MUST equal the RP's canonical origin (§6.1).
 - `challenge_url` and `verify_url` MUST be same-origin with the document's origin.
+- `registration_url` is OPTIONAL. When present it MUST be same-origin with the
+  document's origin and SHOULD point to a page where a user can register an
+  SSH public key with the RP. RPs that advertise it SHOULD also emit
+  `"code": "unknown_key"` on the matching verify outcome (§5.2) so
+  authenticators know when to use it.
 
 Authenticator requirements:
 - MUST build the discovery URL from the *configured* origin, never from a link.
 - MUST reject a document whose version ≠ 1, whose namespace is empty, or whose
   endpoint URLs are not same-origin with the configured origin (SSRF guard).
+- MUST ignore a `registration_url` that is not same-origin with the configured
+  origin — the field is advisory, so an invalid value MUST NOT fail discovery.
+  MAY direct the user to a valid `registration_url` (e.g. open it in the
+  browser) after verification fails with `unknown_key` (§5.2).
 - MUST ignore unknown fields (forward compatibility).
 - MAY cache with a short TTL; SHOULD refetch after a verification failure.
 
@@ -135,7 +145,7 @@ POST <verify_url>          Content-Type: application/json   (no cookies)
   "public_key": "ssh-ed25519 AAAA… comment"        // see below
 }
 → 200 { "ok": true }
-→ 4xx/5xx { "ok": false, "error": "<reason>" }
+→ 4xx/5xx { "ok": false, "error": "<reason>", "code": "<token>" }   // code OPTIONAL
 ```
 
 The RP MUST:
@@ -161,6 +171,19 @@ mismatch), 401 (signature verification failed / no account matches the key),
 MUST treat any non-2xx or `{"ok": false}` as failure and MAY try a different
 key against the same request_id (a failed verify MUST NOT consume the
 challenge or the request).
+
+`error` is free text for humans. `code`, when present, is a machine-readable
+token; this version defines one value:
+
+- `unknown_key` — no registered account matches the offered key: the item-4
+  selector located no account, or the resolved account has no registered
+  keys. RPs SHOULD include it on that outcome (and only that outcome — a
+  signature that fails against a *registered* key MUST NOT carry it), so
+  authenticators can guide the user to key registration (`registration_url`,
+  §4) once every available key has been tried.
+
+Authenticators MUST ignore unrecognized codes and MUST NOT treat the absence
+of a `code` as success.
 
 ### 5.3 Signature format
 

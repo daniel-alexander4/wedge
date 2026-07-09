@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -187,22 +188,29 @@ func (s *Server) handleHandoff(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOpen launches a configured site in the user's default browser. It only
-// opens http(s) origins present in the sites list — never an arbitrary URL or
-// scheme — so it can't be turned into a local scheme-handler gadget (e.g.
-// xdg-open on wedge:// or file://). Loopback + same-origin guarded like the rest.
+// opens http(s) URLs whose *origin* is present in the sites list — never another
+// host or scheme — so it can't be turned into a local scheme-handler gadget
+// (e.g. xdg-open on wedge:// or file://). A path/query under a configured origin
+// is allowed (the unregistered-key flow opens the RP's registration page).
+// Loopback + same-origin guarded like the rest.
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	var body struct {
-		Origin string `json:"origin"`
+		URL    string `json:"url"`
+		Origin string `json:"origin"` // legacy alias: an origin is just a path-less URL
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "invalid request body"})
 		return
 	}
-	origin := policy.NormalizeOrigin(strings.TrimSpace(body.Origin))
+	target := strings.TrimSpace(body.URL)
+	if target == "" {
+		target = strings.TrimSpace(body.Origin)
+	}
+	origin := policy.NormalizeOrigin(target)
 	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "only http(s) URLs can be opened"})
 		return
@@ -212,7 +220,7 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not a configured site"})
 		return
 	}
-	if err := s.openURL(site.Origin); err != nil {
+	if err := s.openURL(target); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
@@ -244,8 +252,12 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 	// /api/pending long-poll) and report the outcome so the UI can tell the user
 	// what happened. The loopback server sets no write timeout, so holding the
 	// request through the consent wait is safe.
-	status, message := s.runAppSign(origin)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": status == "success", "status": status, "message": message})
+	status, message, registerURL := s.runAppSign(origin)
+	resp := map[string]any{"ok": status == "success", "status": status, "message": message}
+	if registerURL != "" {
+		resp["registrationUrl"] = registerURL
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleSSH opens a terminal running ssh against a configured ssh:// site. It
@@ -512,20 +524,25 @@ func (s *Server) runSign(raw string) {
 // runAppSign returns a status the UI reports to the user:
 //
 //	success      — signed in; the browser is opening at the claim URL
-//	unregistered — signed, but the RP has no account for the key; plain page opened to register
+//	unregistered — signed, but the RP has no account for the key; registerURL is
+//	               where the user can fix that (the RP's registration_url from
+//	               discovery, or the plain site) — the UI shows a short notice,
+//	               then opens it via /api/open
 //	denied       — the user declined the consent prompt (or it timed out)
 //	no-keys      — no key is loaded in ssh-agent
 //	error        — a discovery/network/policy/signing failure (message has the detail)
-func (s *Server) runAppSign(origin string) (status, message string) {
+//
+// registerURL is empty except on "unregistered".
+func (s *Server) runAppSign(origin string) (status, message, registerURL string) {
 	cfg := s.configMgr.Get()
 	if !cfg.Enabled {
 		log.Printf("app-sign: signing disabled")
-		return "error", "Signing is turned off in wedge."
+		return "error", "Signing is turned off in wedge.", ""
 	}
 	origin = policy.NormalizeOrigin(origin)
 	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
 		log.Printf("app-sign: origin not http(s): %s", origin)
-		return "error", "Not an http(s) site."
+		return "error", "Not an http(s) site.", ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -550,11 +567,11 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 		case "add-allow":
 		default:
 			log.Printf("app-sign: new site declined: %s", origin)
-			return "denied", "Sign-in cancelled."
+			return "denied", "Sign-in cancelled.", ""
 		}
 		if err := s.configMgr.Update(func(c *config.Config) { addSite(c, origin, alwaysAllow) }); err != nil {
 			log.Printf("app-sign: could not add site: %v", err)
-			return "error", "Could not save the site: " + err.Error()
+			return "error", "Could not save the site: " + err.Error(), ""
 		}
 		cfg = s.configMgr.Get()
 		consented = true
@@ -563,12 +580,12 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 	disc, err := rp.Discover(ctx, origin)
 	if err != nil {
 		log.Printf("app-sign: discovery failed for %s: %v", origin, err)
-		return "error", "Couldn't reach " + origin + "."
+		return "error", "Couldn't reach " + origin + ".", ""
 	}
 	start, err := rp.StartApp(ctx, origin)
 	if err != nil {
 		log.Printf("app-sign: app-start failed for %s: %v", origin, err)
-		return "error", "That site doesn't support app sign-in."
+		return "error", "That site doesn't support app sign-in.", ""
 	}
 
 	res := policy.EvaluateSignPolicy(policy.SignPolicyInput{
@@ -580,7 +597,7 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 	})
 	if !res.OK {
 		log.Printf("app-sign: policy rejected: %s", strings.ReplaceAll(res.Error, "\n", " "))
-		return "error", "Sign-in blocked by policy (namespace/origin mismatch)."
+		return "error", "Sign-in blocked by policy (namespace/origin mismatch).", ""
 	}
 
 	// Known-site consent (the presence tap / "stop phishing" prompt).
@@ -602,7 +619,7 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 			switch s.awaitDecision(ctx, p) {
 			case "deny", "":
 				log.Printf("app-sign: denied or timed out for %s", origin)
-				return "denied", "Sign-in cancelled."
+				return "denied", "Sign-in cancelled.", ""
 			case "allow-always":
 				if err := s.configMgr.Update(func(c *config.Config) { setSiteAlwaysAllow(c, origin) }); err != nil {
 					log.Printf("app-sign: could not persist always-allow: %v", err)
@@ -619,15 +636,16 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 	signable, err := s.signableKeys()
 	if err != nil {
 		log.Printf("app-sign: key discovery failed: %v", err)
-		return "error", "Could not read your SSH keys."
+		return "error", "Could not read your SSH keys.", ""
 	}
 	if len(signable) == 0 {
 		log.Printf("app-sign: no agent-loaded keys to sign with (ssh-add a key)")
-		return "no-keys", "No SSH key is loaded — run: ssh-add ~/.ssh/id_ed25519"
+		return "no-keys", "No SSH key is loaded — run: ssh-add ~/.ssh/id_ed25519", ""
 	}
 	var usedKey string
 	signedAtLeastOne := false
 	delivered := false
+	sawUnknownKey := false // the RP spoke the spec's unknown_key code (§5.2)
 	for _, k := range signable {
 		sig, signErr := signer.Sign(start.Challenge, res.Namespace, k.Path, signer.DefaultTimeout)
 		if signErr != nil {
@@ -647,6 +665,9 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 			delivered = true
 			break
 		}
+		if errors.Is(verifyErr, rp.ErrUnknownKey) {
+			sawUnknownKey = true
+		}
 		log.Printf("app-sign: key %s rejected by RP, trying next: %v", k.Fingerprint, verifyErr)
 	}
 	if delivered {
@@ -661,23 +682,26 @@ func (s *Server) runAppSign(origin string) (status, message string) {
 		// with the site by rp.StartApp, so this can't be turned into an open-gadget.
 		if err := s.openURL(start.ClaimURL); err != nil {
 			log.Printf("app-sign: opening claim URL failed: %v", err)
-			return "error", "Signed in, but couldn't open your browser."
+			return "error", "Signed in, but couldn't open your browser.", ""
 		}
 		log.Printf("app-sign: completed for %s (%s) with %s", origin, approval, usedKey)
-		return "success", "Signed in to " + origin + " — opening your browser."
+		return "success", "Signed in to " + origin + " — opening your browser.", ""
 	}
 	if signedAtLeastOne {
-		// The key(s) signed but the RP has no matching account — open the plain
-		// site so the user can register, and say why.
-		log.Printf("app-sign: key not registered at %s; opening plain page to register", origin)
-		if err := s.openURL(origin); err != nil {
-			log.Printf("app-sign: open plain page failed: %v", err)
+		// The key(s) signed but the RP has no matching account. Nothing opens
+		// here — the UI shows a short "not registered yet" notice first, then
+		// opens registerURL through /api/open (same-origin with the site: either
+		// discovery's validated registration_url or the plain origin).
+		registerURL = disc.RegistrationURL
+		if registerURL == "" {
+			registerURL = origin
 		}
-		return "unregistered", "That key isn't registered at " + origin + " yet — opened the site so you can register it."
+		log.Printf("app-sign: key not registered at %s (unknown_key code: %v); registration page: %s", origin, sawUnknownKey, registerURL)
+		return "unregistered", "Your key isn't registered at " + origin + " yet.", registerURL
 	}
 	// Keys are loaded but none could produce a signature (agent/key problem).
 	log.Printf("app-sign: no loaded key could sign for %s", origin)
-	return "error", "Your SSH key couldn't sign — is it unlocked in ssh-agent?"
+	return "error", "Your SSH key couldn't sign — is it unlocked in ssh-agent?", ""
 }
 
 // awaitDecision parks p, surfaces wedge's window, and waits for the user's tap.

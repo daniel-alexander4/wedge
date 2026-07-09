@@ -72,6 +72,15 @@ test('discovery document', { skip }, () => {
   assert.equal(doc.namespace, ORIGIN); // namespace == canonical origin (§6.1)
   assert.equal(doc.challenge_url, `${ORIGIN}/wedge/challenge`);
   assert.equal(doc.verify_url, `${ORIGIN}/wedge/verify`);
+  assert.ok(!('registration_url' in doc)); // OPTIONAL — absent unless configured
+});
+
+test('discovery registration_url', { skip }, () => {
+  const doc = makeRP({ registrationUrl: `${ORIGIN}/register` }).discovery();
+  assert.equal(doc.registration_url, `${ORIGIN}/register`);
+  // Must be same-origin with the site (spec §4) — a foreign URL is a
+  // configuration error, rejected at construction.
+  assert.throws(() => makeRP({ registrationUrl: 'https://evil.example/register' }));
 });
 
 // -- link (§3) ---------------------------------------------------------------
@@ -215,6 +224,18 @@ test('unregistered key: no account', { skip }, async () => {
   const res = await rp.verify(verifyBody(rid, challenge, { key: mallory }));
   assert.equal(res.status, 401);
   assert.equal(res.body.error, 'no account matches key');
+  assert.equal(res.body.code, 'unknown_key'); // machine-readable (§5.2)
+});
+
+test('signature failure carries no code', { skip }, async () => {
+  // unknown_key marks "no account for this key" only — a bad signature
+  // against a *registered* key MUST NOT carry it (§5.2).
+  const rp = makeRP();
+  const { rid, challenge } = startAndFetch(rp);
+  const body = verifyBody(rid, challenge, { key: mallory, public_key: alice.publicKey });
+  const res = await rp.verify(body);
+  assert.equal(res.status, 401);
+  assert.ok(!('code' in res.body));
 });
 
 test('verify rate limited per source', { skip }, async () => {

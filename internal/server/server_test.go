@@ -157,6 +157,37 @@ func TestOpenSite(t *testing.T) {
 	if opened != "" {
 		t.Error("must not open a non-http scheme")
 	}
+
+	// A full URL (path + query) under a configured origin opens as given —
+	// the unregistered-key flow opens the RP's registration page this way.
+	opened = ""
+	w = serve(s, loopbackReq(http.MethodPost, "/api/open", `{"url":"https://acme.example/register?from=wedge"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for URL under configured origin, got %d (%s)", w.Code, w.Body.String())
+	}
+	if opened != "https://acme.example/register?from=wedge" {
+		t.Errorf("expected full URL opened, got %q", opened)
+	}
+
+	// A URL on a foreign host is rejected even with a friendly path.
+	opened = ""
+	w = serve(s, loopbackReq(http.MethodPost, "/api/open", `{"url":"https://evil.example/register"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for URL on non-configured host, got %d", w.Code)
+	}
+	if opened != "" {
+		t.Error("must not open a URL on a non-configured host")
+	}
+
+	// Userinfo can't smuggle a foreign host past the origin check.
+	opened = ""
+	w = serve(s, loopbackReq(http.MethodPost, "/api/open", `{"url":"https://acme.example@evil.example/register"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for userinfo-smuggled host, got %d", w.Code)
+	}
+	if opened != "" {
+		t.Error("must not open a userinfo-smuggled URL")
+	}
 }
 
 func TestOpenSSH(t *testing.T) {

@@ -93,11 +93,17 @@ type Config struct {
 	RateLimitAttempts      int
 	RateLimitWindow        time.Duration
 	DisableVerifyRateLimit bool
+
+	// RegistrationURL is the site's key-registration page, advertised in
+	// discovery (spec §4) so authenticators can send a user whose key isn't
+	// registered yet straight there. Must be same-origin with Origin.
+	RegistrationURL string
 }
 
 // RP is one site's engine. All methods are safe for concurrent use.
 type RP struct {
 	origin              string
+	registrationURL     string
 	findKeys            func(string) ([]string, error)
 	findUserByPublicKey func(string) (string, []string, error)
 	store               RequestStore
@@ -116,8 +122,12 @@ func New(cfg Config) (*RP, error) {
 	if origin == "" || (!strings.HasPrefix(origin, "http://") && !strings.HasPrefix(origin, "https://")) {
 		return nil, fmt.Errorf("wedgerp: Origin is not an http(s) origin: %q", cfg.Origin)
 	}
+	if cfg.RegistrationURL != "" && cfg.RegistrationURL != origin && !strings.HasPrefix(cfg.RegistrationURL, origin+"/") {
+		return nil, fmt.Errorf("wedgerp: RegistrationURL must be same-origin with Origin")
+	}
 	rp := &RP{
 		origin:              origin,
+		registrationURL:     cfg.RegistrationURL,
 		findKeys:            cfg.FindKeys,
 		findUserByPublicKey: cfg.FindUserByPublicKey,
 		store:               cfg.Store,
@@ -188,9 +198,15 @@ func (rp *RP) ChallengeTTL() time.Duration { return rp.challengeTTL }
 type errorBody struct {
 	OK    bool   `json:"ok"`
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"` // machine-readable token (spec §5.2), e.g. "unknown_key"
 }
 
 func errBody(msg string) errorBody { return errorBody{OK: false, Error: msg} }
+
+// errUnknownKey is the spec's unknown_key verify outcome (§5.2): no registered
+// account matches the offered key. The authenticator uses the code to steer
+// the user to registration_url once every key has been tried.
+func errUnknownKey(msg string) errorBody { return errorBody{OK: false, Error: msg, Code: "unknown_key"} }
 
 // StartBody is the /wedge/start success response.
 type StartBody struct {
@@ -290,10 +306,11 @@ func (rp *RP) live(requestID string) (RequestRecord, bool) {
 // Discovery is GET /.well-known/wedge.json (spec §4).
 func (rp *RP) Discovery() wire.Discovery {
 	return wire.Discovery{
-		Version:      1,
-		Namespace:    rp.origin,
-		ChallengeURL: rp.origin + ChallengePath,
-		VerifyURL:    rp.origin + VerifyPath,
+		Version:         1,
+		Namespace:       rp.origin,
+		ChallengeURL:    rp.origin + ChallengePath,
+		VerifyURL:       rp.origin + VerifyPath,
+		RegistrationURL: rp.registrationURL,
 	}
 }
 
@@ -413,7 +430,7 @@ func (rp *RP) resolveCandidates(rec RequestRecord, postedKey string) (string, []
 			return "", nil, 500, errBody("internal error")
 		}
 		if len(keys) == 0 {
-			return "", nil, 401, errBody("no account matches")
+			return "", nil, 401, errUnknownKey("no account matches")
 		}
 		return rec.Username, keys, 0, nil
 	}
@@ -427,7 +444,7 @@ func (rp *RP) resolveCandidates(rec RequestRecord, postedKey string) (string, []
 		return "", nil, 500, errBody("internal error")
 	}
 	if username == "" || len(keys) == 0 || !principalRegex.MatchString(username) {
-		return "", nil, 401, errBody("no account matches key")
+		return "", nil, 401, errUnknownKey("no account matches key")
 	}
 	return username, keys, 0, nil
 }

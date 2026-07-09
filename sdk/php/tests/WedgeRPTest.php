@@ -63,6 +63,7 @@ final class WedgeRPTest extends TestCase
             findKeys: $args['findKeys'],
             findUserByPublicKey: $args['findUserByPublicKey'],
             challengeTtl: $args['challengeTtl'] ?? WedgeRP::DEFAULT_CHALLENGE_TTL,
+            registrationUrl: $args['registrationUrl'] ?? null,
         );
     }
 
@@ -101,6 +102,17 @@ final class WedgeRPTest extends TestCase
         $this->assertSame(self::ORIGIN, $doc['namespace']); // namespace == canonical origin (§6.1)
         $this->assertSame(self::ORIGIN . '/wedge/challenge', $doc['challenge_url']);
         $this->assertSame(self::ORIGIN . '/wedge/verify', $doc['verify_url']);
+        $this->assertArrayNotHasKey('registration_url', $doc); // OPTIONAL — absent unless configured
+    }
+
+    public function testDiscoveryRegistrationUrl(): void
+    {
+        $doc = $this->makeRP(['registrationUrl' => self::ORIGIN . '/register'])->discovery();
+        $this->assertSame(self::ORIGIN . '/register', $doc['registration_url']);
+        // Must be same-origin with the site (spec §4) — a foreign URL is a
+        // configuration error, rejected at construction.
+        $this->expectException(\InvalidArgumentException::class);
+        $this->makeRP(['registrationUrl' => 'https://evil.example/register']);
     }
 
     public function testSignLinkFormat(): void
@@ -258,6 +270,20 @@ final class WedgeRPTest extends TestCase
         $result = $rp->verify($this->verifyBody($rid, $challenge, self::$mallory));
         $this->assertSame(401, $result['status']);
         $this->assertSame('no account matches key', $result['body']['error']);
+        $this->assertSame('unknown_key', $result['body']['code']); // machine-readable (§5.2)
+    }
+
+    public function testSignatureFailureCarriesNoCode(): void
+    {
+        // unknown_key marks "no account for this key" only — a bad signature
+        // against a *registered* key MUST NOT carry it (§5.2).
+        $rp = $this->makeRP();
+        [$rid, $challenge] = $this->startAndFetch($rp);
+        $body = $this->verifyBody($rid, $challenge, self::$mallory);
+        $body['public_key'] = self::$alice->publicKey;
+        $result = $rp->verify($body);
+        $this->assertSame(401, $result['status']);
+        $this->assertArrayNotHasKey('code', $result['body']);
     }
 
     // -- status + browser binding (§5.4) -------------------------------------------------

@@ -137,6 +137,10 @@ class SlidingWindow {
 //   maxConcurrentVerifies — default 4.
 //   verifyRateLimit — [attempts, windowSeconds] per source, default [30, 60];
 //                   null disables.
+//   registrationUrl — the site's key-registration page, advertised in
+//                   discovery (spec §4) so authenticators can send a user
+//                   whose key isn't registered yet straight there. Must be
+//                   same-origin with origin.
 export class WedgeRP {
   #findKeys;
   #findUserByPublicKey;
@@ -154,11 +158,18 @@ export class WedgeRP {
     verifyTimeout = 10000,
     maxConcurrentVerifies = 4,
     verifyRateLimit = [30, 60],
+    registrationUrl = null,
   }) {
     if (!findKeys && !findUserByPublicKey) {
       throw new Error('supply findKeys and/or findUserByPublicKey');
     }
     this.origin = normalizeOrigin(origin);
+    if (registrationUrl !== null
+        && registrationUrl !== this.origin
+        && !registrationUrl.startsWith(this.origin + '/')) {
+      throw new Error('registrationUrl must be same-origin with origin');
+    }
+    this.registrationUrl = registrationUrl;
     this.challengeTtl = Number(challengeTtl);
     this.#findKeys = findKeys;
     this.#findUserByPublicKey = findUserByPublicKey;
@@ -219,12 +230,14 @@ export class WedgeRP {
 
   // GET /.well-known/wedge.json (spec §4).
   discovery() {
-    return {
+    const body = {
       version: 1,
       namespace: this.origin,
       challenge_url: this.origin + CHALLENGE_PATH,
       verify_url: this.origin + VERIFY_PATH,
     };
+    if (this.registrationUrl !== null) body.registration_url = this.registrationUrl;
+    return body;
   }
 
   // POST /wedge/start (browser-facing; shape is the RP's choice, spec §5.4).
@@ -353,7 +366,7 @@ export class WedgeRP {
       let keys = await this.#findKeys(record.username);
       if (typeof keys === 'string') keys = [keys];
       if (!keys || keys.length === 0) {
-        return { status: 401, body: { ok: false, error: 'no account matches' } };
+        return { status: 401, body: { ok: false, error: 'no account matches', code: 'unknown_key' } };
       }
       return keys.map((key) => [record.username, key]);
     }
@@ -364,11 +377,13 @@ export class WedgeRP {
     }
     const match = await this.#findUserByPublicKey(postedKey);
     if (!match) {
-      return { status: 401, body: { ok: false, error: 'no account matches key' } };
+      // The spec's unknown_key code (§5.2): the authenticator uses it to
+      // steer the user to registration_url once every key has been tried.
+      return { status: 401, body: { ok: false, error: 'no account matches key', code: 'unknown_key' } };
     }
     const [username, stored] = match;
     if (!PRINCIPAL_RE.test(username ?? '')) {
-      return { status: 401, body: { ok: false, error: 'no account matches key' } };
+      return { status: 401, body: { ok: false, error: 'no account matches key', code: 'unknown_key' } };
     }
     const storedKeys = typeof stored === 'string' ? [stored] : Array.from(stored);
     return storedKeys.map((key) => [username, key]);

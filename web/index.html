@@ -44,7 +44,7 @@
           <div id="keys-list" class="keys-list"></div>
         </div>
         <div class="field">
-          <label>Sites <span class="field-hint">web URLs to sign into, or ssh:// hosts to open a terminal</span></label>
+          <label>Sites <span class="field-hint">web URLs to sign into, or ssh:// hosts to open a terminal · auto = skip the detail screen (a tap still confirms) · silent = sign without the tap (advanced)</span></label>
           <div id="origin-rows"></div>
           <div class="site-tools">
             <button id="add-origin-row" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-add.svg" alt="" />Add site</button>
@@ -136,6 +136,18 @@
           <button id="save-and-finish" type="button">Save &amp; Finish</button>
         </div>
         <div class="status" id="onboarding-status" hidden></div>
+      </div>
+    </div>
+
+    <!-- Transient notice — a short heads-up before an action fires (e.g. "key
+         not registered yet" before opening the RP's registration page) -->
+    <div class="consent-overlay" id="notice-overlay" hidden>
+      <div class="consent-dialog">
+        <h2><img class="consent-glyph" src="icons/wedge-glyph-keys.svg" alt="" /><span id="notice-title"></span></h2>
+        <p id="notice-text" class="consent-minimal-line"></p>
+        <div class="consent-actions">
+          <button id="notice-action" type="button"></button>
+        </div>
       </div>
     </div>
 

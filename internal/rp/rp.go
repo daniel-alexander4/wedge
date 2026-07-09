@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,6 +29,10 @@ type Discovery struct {
 	Company      string `json:"company,omitempty"`
 	ChallengeURL string `json:"challenge_url"`
 	VerifyURL    string `json:"verify_url"`
+	// RegistrationURL is the RP's optional key-registration page (spec §4).
+	// Advisory: same-origin-validated in Discover, dropped (not fatal) if it
+	// fails, and only ever opened in the user's browser — never dialed.
+	RegistrationURL string `json:"registration_url,omitempty"`
 }
 
 type Challenge struct {
@@ -66,6 +71,9 @@ func Discover(ctx context.Context, origin string) (Discovery, error) {
 	}
 	if strings.TrimSpace(d.Namespace) == "" {
 		return Discovery{}, fmt.Errorf("discovery is missing namespace")
+	}
+	if d.RegistrationURL != "" && !sameOrigin(origin, d.RegistrationURL) {
+		d.RegistrationURL = "" // advisory field: drop it, don't fail discovery (spec §4)
 	}
 	return d, nil
 }
@@ -123,7 +131,13 @@ func StartApp(ctx context.Context, origin string) (AppStart, error) {
 	return out.AppStart, nil
 }
 
-// Verify POSTs the signature to the RP. A non-2xx or {"ok":false} is an error.
+// ErrUnknownKey reports that the RP answered a verify with the spec's
+// "unknown_key" code (§5.2): no registered account matches the offered key.
+// Callers detect it with errors.Is to guide the user to key registration.
+var ErrUnknownKey = errors.New("no registered account matches the key")
+
+// Verify POSTs the signature to the RP. A non-2xx or {"ok":false} is an error;
+// a body carrying "code":"unknown_key" wraps ErrUnknownKey.
 func Verify(ctx context.Context, verifyURL string, req VerifyRequest) error {
 	body, _ := json.Marshal(req)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, verifyURL, bytes.NewReader(body))
@@ -137,14 +151,22 @@ func Verify(ctx context.Context, verifyURL string, req VerifyRequest) error {
 	}
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxBody))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("verify failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(data)))
-	}
 	var out struct {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
+		Code  string `json:"code"`
 	}
-	if err := json.Unmarshal(data, &out); err == nil && !out.OK && out.Error != "" {
+	parsed := json.Unmarshal(data, &out) == nil
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if parsed && out.Code == "unknown_key" {
+			return fmt.Errorf("verify failed (%d): %w", resp.StatusCode, ErrUnknownKey)
+		}
+		return fmt.Errorf("verify failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	if parsed && !out.OK && out.Error != "" {
+		if out.Code == "unknown_key" {
+			return fmt.Errorf("verify rejected: %w", ErrUnknownKey)
+		}
 		return fmt.Errorf("verify rejected: %s", out.Error)
 	}
 	return nil

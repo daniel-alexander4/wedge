@@ -25,6 +25,13 @@ add-on-first-use proven the same day).
 - Both flows are implemented: the core flow via the `wedge://` handler
   (`runSign`), the app-initiated extension via the settings UI's launch button
   (`runAppSign` → `POST /api/signin`).
+- **Unregistered key (app flow):** when every agent-loaded key fails verify
+  with the spec's `unknown_key` code (§5.2), `runAppSign` returns status
+  `"unregistered"` plus the RP's `registration_url` from discovery (§4;
+  same-origin-validated, falling back to the origin root). The UI shows a
+  3-second notice ("key not registered yet", with an immediate **Open now**
+  button), then opens that page via `POST /api/open` — which accepts any
+  http(s) URL whose origin is a configured site, never other hosts.
 
 ## 2. Consent & automation
 

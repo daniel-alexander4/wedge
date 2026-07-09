@@ -272,6 +272,61 @@ func TestSignFlowSilentSkipsConsent(t *testing.T) {
 	}
 }
 
+// stubAppRP stands in for an RP whose verify always answers the spec's
+// unknown_key code: discovery (with registration_url), app-start, 401 verify.
+func stubAppRP(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	var srv *httptest.Server
+	mux.HandleFunc("/.well-known/wedge.json", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(rp.Discovery{
+			Version: 1, Namespace: srv.URL,
+			ChallengeURL: srv.URL + "/ch", VerifyURL: srv.URL + "/verify",
+			RegistrationURL: srv.URL + "/register",
+		})
+	})
+	mux.HandleFunc("/wedge/app-start", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok": true, "request_id": "rid1", "challenge": "AbCdEfGhIjKlMnOp_1234",
+			"namespace": srv.URL, "claim_url": srv.URL + "/wedge/claim?claim=tok",
+		})
+	})
+	mux.HandleFunc("/verify", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "no account matches key", "code": "unknown_key"})
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestAppSignUnregisteredReturnsRegistrationURL(t *testing.T) {
+	t.Setenv("WEDGE_NO_BROWSER", "1")
+	priv, _ := genKey(t)
+
+	rpSrv := stubAppRP(t)
+	s := newSignServer(t, []config.Site{{Origin: rpSrv.URL, Silent: true}}, priv)
+	var opened []string
+	s.openURL = func(u string) error { opened = append(opened, u); return nil }
+
+	status, message, registerURL := s.runAppSign(rpSrv.URL)
+
+	if status != "unregistered" {
+		t.Fatalf("status = %q (%s)", status, message)
+	}
+	if registerURL != rpSrv.URL+"/register" {
+		t.Errorf("registerURL = %q, want the RP's registration_url", registerURL)
+	}
+	// The open happens later, UI-driven through /api/open — never here.
+	if len(opened) != 0 {
+		t.Errorf("runAppSign must not open anything on unregistered, opened %v", opened)
+	}
+	// A failed sign-in must not reach the sign log.
+	if got := len(s.log.snapshot()); got != 0 {
+		t.Errorf("expected no sign-log entries, got %d", got)
+	}
+}
+
 func TestConsentBrokerRespond(t *testing.T) {
 	b := newConsentBroker()
 	p := &pendingSign{ID: "x", decision: make(chan string, 1)}

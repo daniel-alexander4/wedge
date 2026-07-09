@@ -3,6 +3,7 @@ package rp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -53,6 +54,56 @@ func TestDiscoverRejectsCrossOriginURLs(t *testing.T) {
 	})
 	if _, err := Discover(context.Background(), srv.URL); err == nil {
 		t.Error("expected cross-origin verify_url to be rejected")
+	}
+}
+
+func TestDiscoverRegistrationURL(t *testing.T) {
+	// Same-origin registration_url is kept.
+	srv := stubRP(t, func(origin string) Discovery {
+		return Discovery{Version: 1, Namespace: "ns", ChallengeURL: origin + "/ch", VerifyURL: origin + "/verify", RegistrationURL: origin + "/register"}
+	})
+	d, err := Discover(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if d.RegistrationURL != srv.URL+"/register" {
+		t.Errorf("registration_url = %q", d.RegistrationURL)
+	}
+
+	// A foreign-origin registration_url is advisory: dropped, not fatal (spec §4).
+	srv2 := stubRP(t, func(origin string) Discovery {
+		return Discovery{Version: 1, Namespace: "ns", ChallengeURL: origin + "/ch", VerifyURL: origin + "/verify", RegistrationURL: "https://evil.example/register"}
+	})
+	d2, err := Discover(context.Background(), srv2.URL)
+	if err != nil {
+		t.Fatalf("discover with bad registration_url must not fail: %v", err)
+	}
+	if d2.RegistrationURL != "" {
+		t.Errorf("foreign registration_url survived: %q", d2.RegistrationURL)
+	}
+}
+
+func TestVerifyUnknownKeyCode(t *testing.T) {
+	mux := http.NewServeMux()
+	code := "unknown_key"
+	mux.HandleFunc("/verify", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]any{"ok": false, "error": "no account matches key", "code": code})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	// The spec's unknown_key code surfaces as ErrUnknownKey.
+	err := Verify(context.Background(), srv.URL+"/verify", VerifyRequest{RequestID: "r"})
+	if !errors.Is(err, ErrUnknownKey) {
+		t.Errorf("expected ErrUnknownKey, got %v", err)
+	}
+
+	// An unrecognized code is still a plain failure, not ErrUnknownKey.
+	code = "something_else"
+	err = Verify(context.Background(), srv.URL+"/verify", VerifyRequest{RequestID: "r"})
+	if err == nil || errors.Is(err, ErrUnknownKey) {
+		t.Errorf("unrecognized code must fail without ErrUnknownKey, got %v", err)
 	}
 }
 

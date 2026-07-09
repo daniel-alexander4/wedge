@@ -49,6 +49,9 @@ const rp = new WedgeRP({
   findKeys,
   findUserByPublicKey,
   store: new SqliteStore('/var/lib/myapp/wedge.db'), // shared across processes
+  // Optional: advertised in discovery — wedge sends users whose key isn't
+  // registered yet straight here (must be same-origin with origin).
+  registrationUrl: 'https://example.com/register',
 });
 
 // 3. Mount it. `login` runs inside the request cycle at the one moment a

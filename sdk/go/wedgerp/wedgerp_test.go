@@ -90,6 +90,23 @@ func TestDiscoveryDocument(t *testing.T) {
 		doc.VerifyURL != testOrigin+"/wedge/verify" {
 		t.Fatalf("discovery = %+v", doc) // namespace == canonical origin (§6.1)
 	}
+	if doc.RegistrationURL != "" { // OPTIONAL — absent unless configured
+		t.Fatalf("registration_url = %q, want empty", doc.RegistrationURL)
+	}
+}
+
+func TestDiscoveryRegistrationURL(t *testing.T) {
+	f := newFixture(t, func(c *Config) { c.RegistrationURL = testOrigin + "/register" })
+	if doc := f.rp.Discovery(); doc.RegistrationURL != testOrigin+"/register" {
+		t.Fatalf("registration_url = %q", doc.RegistrationURL)
+	}
+	// Must be same-origin with the site (spec §4) — a foreign URL is a
+	// configuration error, rejected at construction.
+	cfg := Config{Origin: testOrigin, FindKeys: func(string) ([]string, error) { return nil, nil }}
+	cfg.RegistrationURL = "https://evil.example/register"
+	if _, err := New(cfg); err == nil {
+		t.Fatal("foreign RegistrationURL must be rejected")
+	}
 }
 
 func TestSignLinkFormat(t *testing.T) {
@@ -267,6 +284,25 @@ func TestUnregisteredKeyNoAccount(t *testing.T) {
 	status, body := f.rp.Verify(req, "")
 	if status != 401 || !strings.Contains(body.(errorBody).Error, "no account") {
 		t.Fatalf("status=%d body=%+v", status, body)
+	}
+	if body.(errorBody).Code != "unknown_key" { // machine-readable (§5.2)
+		t.Fatalf("code = %q, want unknown_key", body.(errorBody).Code)
+	}
+}
+
+func TestSignatureFailureCarriesNoCode(t *testing.T) {
+	// unknown_key marks "no account for this key" only — a bad signature
+	// against a *registered* key MUST NOT carry it (§5.2).
+	f := newFixture(t)
+	rid, challenge, _ := f.startAndFetch(t, "")
+	req := f.verifyReq(t, rid, challenge, f.mallory, testOrigin)
+	req.PublicKey = f.alice.publicKey
+	status, body := f.rp.Verify(req, "")
+	if status != 401 {
+		t.Fatalf("status = %d", status)
+	}
+	if code := body.(errorBody).Code; code != "" {
+		t.Fatalf("code = %q, want empty", code)
 	}
 }
 

@@ -77,6 +77,9 @@ $rp = new WedgeRP(
     store: new SqliteStore('/var/lib/myapp/wedge.db'),
     findKeys: fn (string $u) => $users[$u] ?? null,
     findUserByPublicKey: /* Kernel::sameKey scan, as above */,
+    // Optional: advertised in discovery — wedge sends users whose key isn't
+    // registered yet straight here (must be same-origin with origin).
+    registrationUrl: 'https://example.com/register',
 );
 
 session_start();

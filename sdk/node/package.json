@@ -1,6 +1,6 @@
 {
   "name": "wedge-rp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Relying-party middleware for wedge: let users sign in to your site with their SSH key",
   "license": "MIT",
   "author": "Daniel Alexander",

@@ -68,6 +68,15 @@ class CoreConformanceTest(unittest.TestCase):
         self.assertEqual(doc["namespace"], ORIGIN)  # namespace == canonical origin (§6.1)
         self.assertEqual(doc["challenge_url"], ORIGIN + "/wedge/challenge")
         self.assertEqual(doc["verify_url"], ORIGIN + "/wedge/verify")
+        self.assertNotIn("registration_url", doc)  # OPTIONAL — absent unless configured
+
+    def test_discovery_registration_url(self):
+        doc = self.make_rp(registration_url=ORIGIN + "/register").discovery()
+        self.assertEqual(doc["registration_url"], ORIGIN + "/register")
+        # Must be same-origin with the site (spec §4) — a foreign URL is a
+        # configuration error, rejected at construction.
+        with self.assertRaises(ValueError):
+            self.make_rp(registration_url="https://evil.example/register")
 
     # -- link (§3) ------------------------------------------------------------
 
@@ -198,6 +207,18 @@ class CoreConformanceTest(unittest.TestCase):
         status, body = rp.verify(self.verify_body(rid, challenge, key=self.mallory))
         self.assertEqual(status, 401)
         self.assertEqual(body["error"], "no account matches key")
+        self.assertEqual(body["code"], "unknown_key")  # machine-readable (§5.2)
+
+    def test_signature_failure_carries_no_code(self):
+        # unknown_key marks "no account for this key" only — a bad signature
+        # against a *registered* key MUST NOT carry it (§5.2).
+        rp = self.make_rp()
+        rid, challenge, _ = self.start_and_fetch(rp)
+        body = self.verify_body(rid, challenge, key=self.mallory,
+                                public_key=self.alice.public_key)
+        status, out = rp.verify(body)
+        self.assertEqual(status, 401)
+        self.assertNotIn("code", out)
 
     def test_verify_rate_limited(self):
         rp = self.make_rp(verify_rate_limit=(2, 60.0))

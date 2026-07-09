@@ -32,8 +32,9 @@ window.App = {
   },
   // Discovered ~/.ssh public keys, each with whether it's loaded in the agent.
   getKeys: function () { return apiGet('/api/keys'); },
-  // Launch a configured site in the default browser (reuses a running instance).
-  openSite: function (origin) { return apiPost('/api/open', { origin: origin }); },
+  // Open an http(s) URL in the default browser. The server only allows URLs
+  // whose origin is a configured site (e.g. an RP's key-registration page).
+  openSite: function (url) { return apiPost('/api/open', { url: url }); },
   signInThenOpen: function (origin) { return apiPost('/api/signin', { origin: origin }); },
   // Open a terminal running ssh against a configured ssh:// site.
   openSSH: function (origin) { return apiPost('/api/ssh', { origin: origin }); },

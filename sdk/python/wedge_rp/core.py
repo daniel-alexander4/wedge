@@ -138,6 +138,9 @@ class WedgeRP:
     :param store: a :class:`RequestStore`; defaults to a per-process
         :class:`MemoryStore`. Multi-worker servers need :class:`SQLiteStore`
         or another shared store.
+    :param registration_url: the site's key-registration page, advertised in
+        discovery (spec §4) so authenticators can send a user whose key isn't
+        registered yet straight there. Must be same-origin with ``origin``.
     """
 
     def __init__(
@@ -151,10 +154,16 @@ class WedgeRP:
         verify_timeout: float = 10.0,
         max_concurrent_verifies: int = 4,
         verify_rate_limit: tuple[int, float] | None = (30, 60.0),
+        registration_url: str | None = None,
     ) -> None:
         if find_keys is None and find_user_by_public_key is None:
             raise ValueError("supply find_keys and/or find_user_by_public_key")
         self.origin = normalize_origin(origin)
+        if registration_url is not None and not (
+            registration_url == self.origin or registration_url.startswith(self.origin + "/")
+        ):
+            raise ValueError("registration_url must be same-origin with origin")
+        self.registration_url = registration_url
         self.challenge_ttl = float(challenge_ttl)
         self._find_keys = find_keys
         self._find_user_by_public_key = find_user_by_public_key
@@ -220,12 +229,15 @@ class WedgeRP:
 
     def discovery(self) -> dict:
         """GET /.well-known/wedge.json (spec §4)."""
-        return {
+        body = {
             "version": 1,
             "namespace": self.origin,
             "challenge_url": self.origin + CHALLENGE_PATH,
             "verify_url": self.origin + VERIFY_PATH,
         }
+        if self.registration_url is not None:
+            body["registration_url"] = self.registration_url
+        return body
 
     def start(self, username: str | None = None) -> tuple[int, dict, str | None]:
         """POST /wedge/start (browser-facing; shape is the RP's choice, spec
@@ -341,7 +353,7 @@ class WedgeRP:
             if isinstance(keys, str):
                 keys = [keys]
             if not keys:
-                return 401, {"ok": False, "error": "no account matches"}
+                return 401, {"ok": False, "error": "no account matches", "code": "unknown_key"}
             return [(record.username, key) for key in keys]
         # Keyless: the posted public key is REQUIRED (spec §8.2) and is only a
         # selector — verification runs against the stored keys.
@@ -350,10 +362,12 @@ class WedgeRP:
         assert self._find_user_by_public_key is not None  # enforced at start/app_start
         match = self._find_user_by_public_key(posted_key)
         if match is None:
-            return 401, {"ok": False, "error": "no account matches key"}
+            # The spec's unknown_key code (§5.2): the authenticator uses it to
+            # steer the user to registration_url once every key has been tried.
+            return 401, {"ok": False, "error": "no account matches key", "code": "unknown_key"}
         username, stored = match
         if not PRINCIPAL_RE.fullmatch(username or ""):
-            return 401, {"ok": False, "error": "no account matches key"}
+            return 401, {"ok": False, "error": "no account matches key", "code": "unknown_key"}
         stored_keys = [stored] if isinstance(stored, str) else list(stored)
         return [(username, key) for key in stored_keys]
 

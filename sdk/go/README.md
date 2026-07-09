@@ -50,6 +50,9 @@ rp, err := wedgerp.New(wedgerp.Config{
         }
         return "", nil, nil
     },
+    // Optional: advertised in discovery — wedge sends users whose key isn't
+    // registered yet straight here (must be same-origin with Origin).
+    RegistrationURL: "https://example.com/register",
 })
 
 // 3. Mount it. Login runs inside the request at the one moment a session
