@@ -285,6 +285,9 @@ button[aria-pressed="false"] {
   opacity: 1;
   color: var(--accent);
 }
+/* The row-action icons are self-colored SVGs (with the set's contrast halo);
+   hover feedback comes from the opacity ramp on the parent span. */
+.origin-row .row-btn-glyph { width: 16px; height: 16px; display: block; }
 .origin-row input.invalid { border-color: var(--red); }
 
 .field-hint {
@@ -471,6 +474,7 @@ button[aria-pressed="false"] {
   font-size: 18px;
   font-weight: 600;
 }
+.consent-glyph { width: 18px; height: 18px; vertical-align: -3px; margin-right: 8px; }
 .consent-fields {
   display: flex;
   flex-direction: column;

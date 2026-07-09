@@ -48,8 +48,8 @@
           <div id="origin-rows"></div>
           <div class="site-tools">
             <button id="add-origin-row" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-add.svg" alt="" />Add site</button>
-            <button id="export-sites" class="secondary" type="button">Export…</button>
-            <button id="import-sites" class="secondary" type="button">Import…</button>
+            <button id="export-sites" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-export.svg" alt="" />Export…</button>
+            <button id="import-sites" class="secondary" type="button"><img class="glyph" src="icons/wedge-glyph-import.svg" alt="" />Import…</button>
             <input id="import-sites-file" type="file" accept=".json,application/json" hidden />
           </div>
           <div id="origin-row-errors" class="field-error" hidden></div>
@@ -142,7 +142,7 @@
     <!-- Consent Overlay — shown when a wedge:// sign request is parked -->
     <div class="consent-overlay" id="consent-overlay" hidden>
       <div class="consent-dialog">
-        <h2 id="consent-title">Sign request</h2>
+        <h2><img class="consent-glyph" src="icons/wedge-glyph-presence.svg" alt="" /><span id="consent-title">Sign request</span></h2>
         <p id="consent-minimal-line" class="consent-minimal-line" hidden></p>
         <div class="consent-fields" id="consent-detail">
           <div class="consent-field">

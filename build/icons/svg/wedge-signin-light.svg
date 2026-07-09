@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 64">
+  <defs>
+    <linearGradient id="blendR" gradientUnits="userSpaceOnUse" x1="408.4" y1="174.7" x2="450.9" y2="252.2"><stop offset="0" stop-color="#6ee7b7"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+    <linearGradient id="blendL" gradientUnits="userSpaceOnUse" x1="259.2" y1="197.4" x2="216.6" y2="275"><stop offset="0" stop-color="#6ee7b7"/><stop offset="1" stop-color="#6366f1"/></linearGradient>
+    <clipPath id="indClip"><polygon points="150,231.8 530,257.6 530,420 150,420"/></clipPath>
+    <clipPath id="leftClip"><polygon points="320,20 320,380 140,380 140,20"/></clipPath>
+    <linearGradient id="upper" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#10b981"/><stop offset="1" stop-color="#a7f3d0"/></linearGradient>
+    <linearGradient id="lower" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="377" height="61" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="3"/>
+  <g transform="translate(20,7) scale(0.208) translate(-84,-3) scale(0.6)">
+    <polygon points="340,50 170,360 510,360" fill="none" stroke="#0f172a" stroke-width="20" stroke-linejoin="round"/>
+    <polygon points="238,236 408,174 416,188" fill="#0f172a" stroke="#0f172a" stroke-width="7" stroke-linejoin="round"/>
+    <polygon points="238,236 442,236 450,252" fill="#0f172a" stroke="#0f172a" stroke-width="7" stroke-linejoin="round"/>
+    <polygon points="238,236 408,174 416,188" fill="url(#upper)"/>
+    <polygon points="238,236 442,236 450,252" fill="url(#lower)"/>
+    <polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendR)" stroke-width="8" stroke-linejoin="round"/>
+    <g clip-path="url(#indClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="#6366f1" stroke-width="8" stroke-linejoin="round"/></g>
+    <g clip-path="url(#leftClip)"><polygon points="340,50 170,360 510,360" fill="none" stroke="url(#blendL)" stroke-width="8" stroke-linejoin="round"/></g>
+  </g>
+  <text x="82" y="41" font-family="DejaVu Sans, Inter, Helvetica, Arial, sans-serif" font-size="23" font-weight="600" fill="#0f172a">Sign in with wedge</text>
+</svg>

@@ -109,20 +109,27 @@ function createSiteRow(origin, alwaysAllow, silent) {
   launchBtn.setAttribute('role', 'button');
   launchBtn.tabIndex = 0;
 
+  var launchImg = document.createElement('img');
+  launchImg.className = 'row-btn-glyph';
+  launchImg.alt = '';
+  launchBtn.appendChild(launchImg);
+
   var sftpBtn = document.createElement('span');
   sftpBtn.className = 'launch-row-btn';
   sftpBtn.setAttribute('role', 'button');
   sftpBtn.tabIndex = 0;
-  // U+FE0E forces text presentation so the glyph takes the theme color
-  // instead of rendering as a color emoji.
-  sftpBtn.textContent = '🗂︎';
+  var sftpImg = document.createElement('img');
+  sftpImg.className = 'row-btn-glyph';
+  sftpImg.alt = '';
+  sftpImg.src = 'icons/wedge-glyph-sftp.svg';
+  sftpBtn.appendChild(sftpImg);
   sftpBtn.title = 'Browse this host’s files over SFTP';
   sftpBtn.setAttribute('aria-label', sftpBtn.title);
 
   function updateLaunchIcon() {
     var t = normalizeSiteValue(originInput.value.trim());
     var ssh = t && t.scheme === 'ssh:';
-    launchBtn.textContent = ssh ? '🖥︎' : '↗';
+    launchImg.src = ssh ? 'icons/wedge-glyph-terminal.svg' : 'icons/wedge-glyph-open.svg';
     var label = ssh ? 'Open an SSH terminal to this host' : 'Sign in with wedge and open this site';
     launchBtn.title = label;
     launchBtn.setAttribute('aria-label', label);
@@ -168,7 +175,11 @@ function createSiteRow(origin, alwaysAllow, silent) {
 
   var removeBtn = document.createElement('span');
   removeBtn.className = 'remove-row-btn';
-  removeBtn.textContent = '🗑';
+  var removeImg = document.createElement('img');
+  removeImg.className = 'row-btn-glyph';
+  removeImg.alt = '';
+  removeImg.src = 'icons/wedge-glyph-remove.svg';
+  removeBtn.appendChild(removeImg);
   removeBtn.setAttribute('role', 'button');
   removeBtn.setAttribute('aria-label', 'Remove site');
   removeBtn.tabIndex = 0;
