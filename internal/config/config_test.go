@@ -46,6 +46,36 @@ func TestCreateLoadSaveRoundtrip(t *testing.T) {
 	}
 }
 
+func TestOnChangeFiresAfterUpdate(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewManagerWithPath(filepath.Join(dir, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fired := 0
+	m.OnChange(func() { fired++ })
+	if err := m.Update(func(c *Config) { c.Enabled = false }); err != nil {
+		t.Fatal(err)
+	}
+	if fired != 1 {
+		t.Errorf("onChange fired %d times, want 1", fired)
+	}
+	// The callback may itself read the config (the tray rebuilds its menu) —
+	// must not deadlock and must see the new value.
+	m.OnChange(func() {
+		fired++
+		if m.Get().Enabled {
+			t.Error("onChange read stale config")
+		}
+	})
+	if err := m.Update(func(c *Config) { c.Enabled = false }); err != nil {
+		t.Fatal(err)
+	}
+	if fired != 2 {
+		t.Errorf("onChange fired %d times total, want 2", fired)
+	}
+}
+
 func TestTunnelsJumpRoundtrip(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

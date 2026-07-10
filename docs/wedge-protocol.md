@@ -117,6 +117,20 @@ read — at connect time. Aliases that fail the launch validation
 `wedge --version` and headless runs (`WEDGE_NO_BROWSER=1`) never trigger the
 handler path.
 
+**System tray (quick-launch).** On Linux (D-Bus StatusNotifierItem) and
+Windows (win32) — both pure Go, so the CGO_ENABLED=0 release matrix is
+untouched — wedge shows a tray icon whose menu lists the sites (ssh:// →
+terminal, http(s) → sign-in-then-open; both go through the server's own
+loopback API, so a tray click and a settings-row click share one validated
+code path), plus **Open wedge** and **Quit wedge** — the first user-visible
+way to stop wedge. The menu rebuilds live when sites change. Disable with
+`WEDGE_NO_TRAY=1`. macOS tray needs cgo and lands with the native mac build.
+GNOME shows StatusNotifier icons only with the AppIndicator extension (or a
+proxy like snixembed); without one, wedge logs it and runs normally — there's
+just no icon. Sign-ins started from the tray surface their consent tap through
+the existing auto-opened window (`awaitDecision`), so the presence-tap
+invariant is untouched.
+
 ## 5. Decision history (kept for the record)
 
 1. **Runtime-proven** against `~/repos/wedge-web` (2026-07-07): full core flow,

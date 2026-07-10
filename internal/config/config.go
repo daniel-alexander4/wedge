@@ -101,9 +101,10 @@ func migrateSites(lc legacyConfig) []Site {
 }
 
 type Manager struct {
-	mu     sync.RWMutex
-	path   string
-	config Config
+	mu       sync.RWMutex
+	path     string
+	config   Config
+	onChange func()
 }
 
 func NewManager() (*Manager, error) {
@@ -209,6 +210,19 @@ func (m *Manager) Get() Config {
 func (m *Manager) Update(fn func(*Config)) error {
 	m.mu.Lock()
 	fn(&m.config)
+	onChange := m.onChange
 	m.mu.Unlock()
-	return m.Save()
+	err := m.Save()
+	if err == nil && onChange != nil {
+		onChange()
+	}
+	return err
+}
+
+// OnChange registers fn to run after every successful Update save (e.g. the
+// tray rebuilding its sites menu). Single subscriber; called outside the lock.
+func (m *Manager) OnChange(fn func()) {
+	m.mu.Lock()
+	m.onChange = fn
+	m.mu.Unlock()
 }

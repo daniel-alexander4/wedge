@@ -26,6 +26,7 @@ import (
 	"github.com/daniel-alexander4/wedge/internal/config"
 	"github.com/daniel-alexander4/wedge/internal/server"
 	"github.com/daniel-alexander4/wedge/internal/singleton"
+	"github.com/daniel-alexander4/wedge/internal/tray"
 )
 
 // version is set at build time via -ldflags "-X main.version=…" (see build.sh).
@@ -89,29 +90,90 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	<-ctx.Done()
+
+	// Where a real tray backend exists (linux/windows, pure Go), the tray owns
+	// the main goroutine until its Quit item or a signal ends it — the first
+	// user-visible way to stop wedge. Elsewhere (or under WEDGE_NO_TRAY=1)
+	// main blocks on the signal exactly as before.
+	if tray.Supported() && os.Getenv("WEDGE_NO_TRAY") == "" {
+		mgr.OnChange(tray.Refresh) // sites edited in settings → menu rebuilds
+		go func() {
+			<-ctx.Done()
+			tray.Quit()
+		}()
+		tray.Run(trayDeps(mgr, uiURL))
+	} else {
+		<-ctx.Done()
+	}
 	if err := srv.Stop(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Printf("shutdown: %v", err)
+	}
+}
+
+// trayDeps wires the tray menu to the running app. Site launches go over the
+// server's own loopback API (the forwardHandoff pattern), so a tray click and
+// a settings-row click share the exact same validated code path.
+func trayDeps(mgr *config.Manager, uiURL string) tray.Deps {
+	port := mgr.Get().ServerPort
+	return tray.Deps{
+		Version:  version,
+		Icon:     wedge.TrayIcon(),
+		GlyphSSH: wedge.TrayGlyphTerminal(),
+		GlyphWeb: wedge.TrayGlyphWeb(),
+		Sites: func() []tray.Site {
+			cfg := mgr.Get()
+			sites := make([]tray.Site, 0, len(cfg.Sites))
+			for _, s := range cfg.Sites {
+				sites = append(sites, tray.NewSite(s.Origin))
+			}
+			return sites
+		},
+		OpenUI: func() { browser.Open(uiURL) },
+		Launch: func(s tray.Site) {
+			path := "/api/signin"
+			timeout := 90 * time.Second // sign-in can wait 45s on the consent tap
+			if s.SSH {
+				path, timeout = "/api/ssh", 10*time.Second
+			}
+			if err := postLoopback(port, path, map[string]string{"origin": s.Origin}, timeout); err != nil {
+				log.Printf("tray launch %s: %v", s.Origin, err)
+			}
+		},
 	}
 }
 
 // forwardHandoff hands a wedge:// link to the running instance's loopback
 // server. Returns true on success.
 func forwardHandoff(port int, signURL string) bool {
-	body, _ := json.Marshal(map[string]string{"url": signURL})
-	url := fmt.Sprintf("http://127.0.0.1:%d/internal/handoff", port)
+	return postLoopback(port, "/internal/handoff", map[string]string{"url": signURL}, 3*time.Second) == nil
+}
+
+// postLoopback POSTs JSON to this (or the running) wedge's loopback server.
+func postLoopback(port int, path string, payload any, timeout time.Duration) error {
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, path)
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return false
+		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: timeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		return false
+		return err
 	}
-	resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		var e struct {
+			Error string `json:"error"`
+		}
+		json.NewDecoder(resp.Body).Decode(&e)
+		if e.Error != "" {
+			return errors.New(e.Error)
+		}
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	return nil
 }
 
 func firstWedgeArg() string {
