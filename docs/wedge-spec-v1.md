@@ -394,3 +394,9 @@ in one command.
   lockstep); built against this document as its implementability test. The
   Go package shares the authenticator's own origin-equivalence code and wire
   types, so the two protocol sides cannot drift.
+- Conformance harness: `wedge-conform` (`cmd/wedge-conform`, this repository)
+  — a black-box client that drives any RP over HTTP in the authenticator role
+  and asserts every wire-observable RP requirement of this document. See
+  `docs/wedge-conformance.md` for the requirement-to-check mapping, the
+  bootstrap contract, and the list of requirements that are not
+  black-box-observable.

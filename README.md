@@ -54,11 +54,18 @@ Each package implements every RP requirement of the spec, ships a runnable
 demo, and carries a conformance test suite kept test-for-test in lockstep
 with the others. Each README is the integration guide.
 
+To verify any RP — one of these or your own — against the spec over the wire,
+run the conformance harness: `go run ./cmd/wedge-conform --target <origin>`
+(see [`docs/wedge-conformance.md`](docs/wedge-conformance.md)). It drives the
+RP as an authenticator would and checks every wire-observable RP requirement.
+
 ## Repo layout
 
 - `cmd/wedge/`, `internal/`, `web/` — the wedge app (Go + embedded UI)
+- `cmd/wedge-conform/` — the black-box RP conformance harness
 - `docs/wedge-spec-v1.md` — the normative protocol spec;
-  `docs/wedge-protocol.md` — app implementation notes
+  `docs/wedge-protocol.md` — app implementation notes;
+  `docs/wedge-conformance.md` — the conformance harness
 - `sdk/{python,node,go,php}/` — the relying-party middleware
 - `build/` — packaging (nfpm, desktop entry, icon set)
 
