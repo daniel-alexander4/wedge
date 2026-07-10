@@ -72,6 +72,46 @@ else
   echo "nfpm not found — skipping .deb. Install: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest"
 fi
 
+# macOS .app bundles: macOS routes wedge:// to a bundle identifier, not a bare
+# binary, so the URL-scheme handler (Info.plist CFBundleURLTypes) needs a
+# wedge.app. Ship one per arch, zipped. NOTE: unsigned — Gatekeeper quarantines
+# it until it is codesigned + notarized (an Apple Developer account); until then
+# a user opens it once via right-click → Open. `wedge --register-handler`
+# (run from inside the .app) forces Launch Services to pick up the scheme.
+for arch in amd64 arm64; do
+  app="$DIST/wedge.app"
+  rm -rf "$app"
+  mkdir -p "$app/Contents/MacOS"
+  cp "$DIST/wedge-$VERSION-darwin-$arch" "$app/Contents/MacOS/wedge"
+  cat > "$app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>wedge</string>
+  <key>CFBundleDisplayName</key><string>wedge</string>
+  <key>CFBundleIdentifier</key><string>io.alexander4.wedge</string>
+  <key>CFBundleExecutable</key><string>wedge</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>io.alexander4.wedge</string>
+      <key>CFBundleURLSchemes</key><array><string>wedge</string></array>
+    </dict>
+  </array>
+</dict>
+</plist>
+PLIST
+  ( cd "$DIST" && zip -qr "wedge-$VERSION-darwin-$arch.app.zip" wedge.app )
+  rm -rf "$app"
+  echo "packaged wedge-$VERSION-darwin-$arch.app.zip"
+done
+
 echo "done — artifacts in $DIST/"
 
 if [ "$PUBLISH" = 1 ]; then
@@ -82,4 +122,22 @@ if [ "$PUBLISH" = 1 ]; then
     --generate-notes \
     "$DIST"/*
   echo "published — https://github.com/daniel-alexander4/wedge/releases/tag/v$VERSION"
+
+  # Optional apt channel: push the .debs to a public GCP Artifact Registry apt
+  # repo so strangers can `apt install wedge` instead of building from source.
+  # Off unless WEDGE_APT_REPO is set — build.sh -p is unchanged for anyone who
+  # hasn't opted in. AR signs the repo metadata itself (clients trust it via
+  # AR's own key), so there is no signing key to manage here. One-time setup +
+  # the client sources.list line are documented in README.
+  if [ -n "${WEDGE_APT_REPO:-}" ]; then
+    command -v gcloud >/dev/null 2>&1 || { echo "WEDGE_APT_REPO set but gcloud not found — skipping apt publish" >&2; exit 1; }
+    loc="${WEDGE_APT_LOCATION:-us-west1}"
+    for arch in amd64 arm64; do
+      deb="$DIST/wedge_${VERSION}_${arch}.deb"
+      [ -f "$deb" ] || { echo "no $deb to upload (nfpm ran?) — skipping" >&2; continue; }
+      echo "uploading $deb to AR apt repo $WEDGE_APT_REPO ($loc)"
+      gcloud artifacts apt upload "$WEDGE_APT_REPO" --location="$loc" --source="$deb"
+    done
+    echo "apt channel updated — clients: apt update && apt install wedge"
+  fi
 fi

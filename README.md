@@ -26,8 +26,37 @@ Linux (builds a `.deb` and installs it, including the menu entry and the
 ```
 
 Or run from source: `make run` (`WEDGE_NO_BROWSER=1` for headless).
-Release artifacts for all platforms: `./build.sh`. macOS/Windows `wedge://`
-handler registration is currently manual — see `docs/wedge-protocol.md` §9.
+Release artifacts for all platforms: `./build.sh` (per-arch binaries, Linux
+`.deb`s, and macOS `wedge.app` bundles).
+
+On any OS, `wedge --register-handler` registers this binary as the `wedge://`
+handler for the current user (`--unregister-handler` reverses it); the Linux
+`.deb` does it automatically. See `docs/wedge-protocol.md` §4 for the per-OS
+mechanism (and the macOS unsigned-`.app`/Gatekeeper note).
+
+### apt channel (optional)
+
+If a public [GCP Artifact Registry](https://cloud.google.com/artifact-registry)
+apt repo is configured, strangers can install without building from source.
+Maintainer setup is one-time — create the repo and grant public read:
+
+```bash
+gcloud artifacts repositories create wedge-apt --repository-format=apt --location=us-west1
+gcloud artifacts repositories add-iam-policy-binding wedge-apt \
+  --location=us-west1 --member=allUsers --role=roles/artifactregistry.reader
+```
+
+then `WEDGE_APT_REPO=wedge-apt WEDGE_APT_LOCATION=us-west1 ./build.sh -p` pushes
+each `.deb` to it (AR signs the repo metadata itself — no key to manage).
+Clients add it once:
+
+```bash
+curl -fsSL https://us-west1-apt.pkg.dev/doc/repo-signing-key.gpg \
+  | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/wedge.gpg
+echo "deb [signed-by=/etc/apt/trusted.gpg.d/wedge.gpg] https://us-west1-apt.pkg.dev/projects/PROJECT wedge-apt main" \
+  | sudo tee /etc/apt/sources.list.d/wedge.list
+sudo apt update && sudo apt install wedge
+```
 
 ## The protocol
 

@@ -24,6 +24,7 @@ import (
 	"github.com/daniel-alexander4/wedge"
 	"github.com/daniel-alexander4/wedge/internal/browser"
 	"github.com/daniel-alexander4/wedge/internal/config"
+	"github.com/daniel-alexander4/wedge/internal/handler"
 	"github.com/daniel-alexander4/wedge/internal/server"
 	"github.com/daniel-alexander4/wedge/internal/singleton"
 	"github.com/daniel-alexander4/wedge/internal/tray"
@@ -38,6 +39,22 @@ func main() {
 
 	if hasFlag("--version") || hasFlag("-version") {
 		log.Printf("wedge %s", version)
+		return
+	}
+
+	// Handler (un)registration is a pure side-effect — no server/config needed.
+	if hasFlag("--register-handler") {
+		if err := handler.Register(); err != nil {
+			log.Fatalf("could not register the wedge:// handler: %v", err)
+		}
+		log.Print("registered wedge:// handler")
+		return
+	}
+	if hasFlag("--unregister-handler") {
+		if err := handler.Unregister(); err != nil {
+			log.Fatalf("could not unregister the wedge:// handler: %v", err)
+		}
+		log.Print("unregistered wedge:// handler")
 		return
 	}
 

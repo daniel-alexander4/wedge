@@ -107,15 +107,28 @@ read — at connect time. Aliases that fail the launch validation
 
 ## 4. Protocol-handler registration (per-OS)
 
-- **Linux:** `.desktop` file with `MimeType=x-scheme-handler/wedge;` registered
-  via `xdg-mime default` (automated by `install.sh` / the `.deb` postinstall).
-- **macOS:** `CFBundleURLTypes` with `CFBundleURLSchemes = [wedge]` in
-  `Info.plist` (manual — pending).
-- **Windows:** `HKCU\Software\Classes\wedge` with `URL Protocol` and a
-  `shell\open\command` pointing at the binary (manual — pending).
+`wedge --register-handler` (and `--unregister-handler`) registers this binary
+as the `wedge://` handler for the current user on any OS — the self-service
+path for installs that don't run a packaged installer. Per-OS mechanism:
 
-`wedge --version` and headless runs (`WEDGE_NO_BROWSER=1`) never trigger the
-handler path.
+- **Linux:** a `.desktop` file whose `MimeType=x-scheme-handler/wedge;` line
+  the desktop database indexes into the scheme association. The `.deb`
+  installs one system-wide (its postinstall runs `update-desktop-database`);
+  `--register-handler` writes a per-user one to
+  `~/.local/share/applications/` for raw-binary installs.
+- **macOS:** requires a **`.app` bundle** — macOS routes `wedge://` to a bundle
+  identifier, not a bare binary. `build.sh` produces `wedge.app` with
+  `CFBundleURLTypes` (`CFBundleURLSchemes = [wedge]`, id `io.alexander4.wedge`);
+  `--register-handler` run from inside it forces Launch Services to pick up the
+  scheme. The bundle is **unsigned**, so Gatekeeper quarantines it until it is
+  codesigned + notarized (an Apple Developer account) — until then a user opens
+  it once via right-click → Open.
+- **Windows:** `--register-handler` writes `HKCU\Software\Classes\wedge`
+  (`URL Protocol` + `shell\open\command` → `"<exe>" "%1"`) — per-user, no
+  elevation. Works on the bare `.exe`.
+
+`wedge --version`, `--register-handler`, and headless runs
+(`WEDGE_NO_BROWSER=1`) never trigger the sign/handler path.
 
 **System tray (quick-launch).** On Linux (D-Bus StatusNotifierItem) and
 Windows (win32) — both pure Go, so the CGO_ENABLED=0 release matrix is
