@@ -59,6 +59,13 @@ run the conformance harness: `go run ./cmd/wedge-conform --target <origin>`
 (see [`docs/wedge-conformance.md`](docs/wedge-conformance.md)). It drives the
 RP as an authenticator would and checks every wire-observable RP requirement.
 
+Maintainers publish the SDKs with `./publish-sdks.sh` (dry run; `--publish` to
+push). Each SDK carries its own semver, so this is separate from the app
+release (`build.sh`). It automates **PyPI** (`wedge-rp`) and **npm**
+(`wedge-rp`); the **Go** package is `go get`-able straight from the release git
+tag; **Packagist** (`wedge/wedge-rp`) needs a one-time split of `sdk/php/` into
+a standalone repo (the script prints the steps).
+
 ## Repo layout
 
 - `cmd/wedge/`, `internal/`, `web/` — the wedge app (Go + embedded UI)

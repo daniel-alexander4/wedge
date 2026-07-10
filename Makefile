@@ -2,7 +2,7 @@
 # install.sh, and bump.sh remain the source of truth; this just gives the usual
 # `make` entry points.
 
-.PHONY: build dist release install test vet run clean bump-patch bump-minor bump-major
+.PHONY: build dist release publish-sdks install test vet run clean bump-patch bump-minor bump-major
 
 # Quick local dev build into ./dist/wedge (this machine only).
 build:
@@ -16,6 +16,11 @@ dist:
 # Needs gh + nfpm + a clean tree.
 release:
 	./build.sh --publish
+
+# Publish the RP SDKs to PyPI + npm (dry run; `./publish-sdks.sh --publish` to
+# push). Each SDK has its own semver, so this is separate from `release`.
+publish-sdks:
+	./publish-sdks.sh
 
 # Build the .deb for this machine and install it (Debian/Ubuntu, sudo).
 install:
