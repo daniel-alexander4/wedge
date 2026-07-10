@@ -71,6 +71,7 @@ func New(configMgr *config.Manager, web fs.FS) *Server {
 	mux.HandleFunc("/api/signin", s.handleSignIn)
 	mux.HandleFunc("/api/ssh", s.handleSSH)
 	mux.HandleFunc("/api/sftp", s.handleSFTP)
+	mux.HandleFunc("/api/sshconfig", s.handleSSHConfig)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/signlog", s.handleSignLog)
 	mux.HandleFunc("/api/pending", s.handlePending)
@@ -174,6 +175,33 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
+}
+
+// handleSSHConfig returns the literal Host aliases from ~/.ssh/config for the
+// settings "From SSH config" import. Aliases that would fail the launch-time
+// target validation are dropped and counted as skipped; the client merges the
+// rest into the sites list as ssh://<alias> rows, and launching one runs
+// `ssh <alias>` so OpenSSH resolves the rest of the config itself.
+func (s *Server) handleSSHConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	aliases, err := keyutil.DiscoverSSHConfigHosts()
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"hosts": []string{}, "skipped": 0, "error": err.Error()})
+		return
+	}
+	hosts := make([]string, 0, len(aliases))
+	skipped := 0
+	for _, a := range aliases {
+		if terminal.ValidateSSHTarget("", a, "") != nil {
+			skipped++
+			continue
+		}
+		hosts = append(hosts, a)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hosts": hosts, "skipped": skipped})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

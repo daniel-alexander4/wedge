@@ -56,6 +56,20 @@ function initOnboarding(cfg) {
       originRows.appendChild(createSiteRow());
     });
   }
+  // "From SSH config" — the first-run "it just knew my hosts" moment: imported
+  // rows also satisfy the one-bootstrap-site requirement of Save & Finish.
+  var sshConfigBtn = document.getElementById('onboarding-import-sshconfig');
+  if (sshConfigBtn) {
+    sshConfigBtn.addEventListener('click', function () {
+      importSSHConfig('onboarding-origin-rows', function (text, level) {
+        var statusEl = document.getElementById('onboarding-status');
+        if (!statusEl) return;
+        statusEl.hidden = false;
+        statusEl.textContent = text;
+        statusEl.className = 'status' + (level ? ' status-' + level : '');
+      });
+    });
+  }
 
   // Save & Finish.
   var saveFinishBtn = document.getElementById('save-and-finish');

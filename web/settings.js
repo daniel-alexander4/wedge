@@ -368,6 +368,39 @@ function importSitesFile(file) {
   reader.readAsText(file);
 }
 
+// importSSHConfig pulls the literal Host aliases from ~/.ssh/config (via the
+// server) and merges them into the rows as ssh://<alias> sites. Launching such
+// a row runs `ssh <alias>`, so OpenSSH resolves HostName/User/Port/ProxyJump —
+// including the wildcard/Match blocks wedge doesn't parse — at connect time.
+// Like file import, it only edits the form — the user reviews and clicks Save.
+// Used from both settings (defaults) and onboarding step 2 (containerId +
+// report override, since the settings #status line is hidden there).
+function importSSHConfig(containerId, report) {
+  report = report || setStatus;
+  var persistHint = containerId ? '' : ' — click Save to persist';
+  var parsed = collectSites(containerId);
+  if (parsed.invalidLines.length > 0) { report('Fix invalid site(s) before importing', 'error'); return; }
+  apiGet('/api/sshconfig').then(function (data) {
+    var hosts = (data && Array.isArray(data.hosts)) ? data.hosts : [];
+    var skipped = (data && data.skipped) || 0;
+    var skippedNote = skipped > 0 ? ' (' + skipped + ' skipped — unsupported name)' : '';
+    if (hosts.length === 0) {
+      report('No hosts found in ~/.ssh/config' + skippedNote);
+      return;
+    }
+    var res = mergeSites(parsed.values, hosts.map(function (h) { return { origin: 'ssh://' + h }; }));
+    renderSiteRows(res.sites, containerId);
+    if (!containerId) updateNoSitesWarning();
+    if (res.added > 0) {
+      report('Imported ' + res.added + ' host(s) from ~/.ssh/config' + skippedNote + persistHint, 'success');
+    } else {
+      report('Import: nothing new — all hosts already present' + skippedNote, 'success');
+    }
+  }).catch(function (err) {
+    report('Import failed: ' + err.message, 'error');
+  });
+}
+
 function renderSiteRows(sites, containerId) {
   containerId = containerId || 'origin-rows';
   var container = document.getElementById(containerId);
@@ -525,4 +558,7 @@ function initSettings(cfg) {
       if (f) importSitesFile(f);
     });
   }
+  var sshConfigBtn = document.getElementById('import-sshconfig');
+  // Wrapped so the click Event doesn't land in the containerId parameter.
+  if (sshConfigBtn) sshConfigBtn.addEventListener('click', function () { importSSHConfig(); });
 }

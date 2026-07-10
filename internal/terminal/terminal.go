@@ -17,9 +17,12 @@ import (
 )
 
 var (
-	// hostnames and IPv4 literals: must start and end alphanumeric, so a leading
-	// '-' (ssh option injection) and shell metacharacters are both excluded.
-	sshHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$`)
+	// hostnames, IPv4 literals, and ssh_config Host aliases: must start
+	// alphanumeric, so a leading '-' (ssh option injection) and shell
+	// metacharacters are both excluded. Underscore is allowed after the first
+	// character — aliases aren't DNS names (`Host my_server` is common) and `_`
+	// carries no shell or option-injection risk.
+	sshHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._\-]*[A-Za-z0-9_])?$`)
 	sshUserRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 )
 

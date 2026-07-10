@@ -87,6 +87,15 @@ The legacy `keyPath` + `allowedOrigins` + `originScopes` schema migrates to
 (`wedge-sites.json`; import merges by origin — adds/ORs flags, never deletes).
 Discovery URLs are cached in memory only, never persisted.
 
+**From SSH config.** Settings and onboarding step 2 can also import the
+**literal `Host` aliases** from `~/.ssh/config` (`GET /api/sshconfig`) as
+`ssh://<alias>` sites, through the same merge — review, then Save. Wildcard
+and negated patterns, `Match`, and `Include` are deliberately not parsed:
+launching runs `ssh <alias>`, so OpenSSH resolves
+HostName/User/Port/ProxyJump/IdentityFile — including the blocks wedge didn't
+read — at connect time. Aliases that fail the launch validation
+(`terminal.ValidateSSHTarget`) are dropped server-side and reported as skipped.
+
 ## 4. Protocol-handler registration (per-OS)
 
 - **Linux:** `.desktop` file with `MimeType=x-scheme-handler/wedge;` registered

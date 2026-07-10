@@ -12,6 +12,8 @@ func TestValidateSSHTargetAccepts(t *testing.T) {
 		{"dan", "10.0.0.5", "2222"},
 		{"git", "host-1.sub.example.com", "22"},
 		{"", "localhost", "65535"},
+		{"", "my_server", ""},
+		{"dan", "host_1.example", "22"},
 	}
 	for _, c := range cases {
 		if err := ValidateSSHTarget(c.user, c.host, c.port); err != nil {
@@ -35,6 +37,7 @@ func TestValidateSSHTargetRejectsInjection(t *testing.T) {
 		{"bad port", "", "host", "99999"},
 		{"non-numeric port", "", "host", "22x"},
 		{"quote in user", "u\"x", "host", ""},
+		{"leading underscore host", "", "_host", ""},
 	}
 	for _, c := range cases {
 		if err := ValidateSSHTarget(c.user, c.host, c.port); err == nil {
