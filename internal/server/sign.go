@@ -282,7 +282,8 @@ func (s *Server) handleSSH(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not an ssh:// target"})
 		return
 	}
-	if findSite(s.configMgr.Get(), raw) == nil {
+	site := findSite(s.configMgr.Get(), raw)
+	if site == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": "not a configured site"})
 		return
 	}
@@ -291,7 +292,22 @@ func (s *Server) handleSSH(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}
-	if err := s.openSSH(user, host, port); err != nil {
+	// The site's stored tunnels/jump are validated here too, so a bad spec is
+	// a clear 400 before anything launches (the request itself never carries
+	// tunnel arguments — only the configured site does).
+	for _, t := range site.Tunnels {
+		if _, err := terminal.TunnelFlag(t); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+	}
+	if site.Jump != "" {
+		if err := terminal.ValidateJump(site.Jump); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"ok": false, "error": err.Error()})
+			return
+		}
+	}
+	if err := s.openSSH(user, host, port, site.Tunnels, site.Jump); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"ok": false, "error": err.Error()})
 		return
 	}

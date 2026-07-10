@@ -48,9 +48,10 @@ type Server struct {
 	// sites, file manager for sftp://. Defaults to browser.OpenTab;
 	// overridable in tests so they don't spawn anything.
 	openURL func(string) error
-	// openSSH opens a terminal running ssh against a configured ssh:// site.
-	// Defaults to terminal.OpenSSH; overridable in tests.
-	openSSH func(user, host, port string) error
+	// openSSH opens a terminal running ssh against a configured ssh:// site,
+	// with the site's tunnels (-L/-D) and jump hops (-J) applied. Defaults to
+	// terminal.OpenSSH; overridable in tests.
+	openSSH func(user, host, port string, tunnels []string, jump string) error
 }
 
 func New(configMgr *config.Manager, web fs.FS) *Server {

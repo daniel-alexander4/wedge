@@ -26,6 +26,14 @@ type Site struct {
 	// Silent (advanced, per-site opt-in) skips the presence tap too. Off by
 	// default; reopens the §8 phishing risk for this origin by informed choice.
 	Silent bool `json:"silent,omitempty"`
+	// Tunnels are per-site port forwards applied when the terminal launcher
+	// runs ssh (ssh:// sites only). Each spec's shape picks the flag —
+	// [bind:]port → -D, [bind:]lport:host:hport → -L — and is strictly
+	// validated at launch (terminal.TunnelFlag); never free text.
+	Tunnels []string `json:"tunnels,omitempty"`
+	// Jump is an OpenSSH ProxyJump hop list ([user@]host[:port], comma-
+	// separated) passed as -J at launch. Validated by terminal.ValidateJump.
+	Jump string `json:"jump,omitempty"`
 }
 
 type Config struct {

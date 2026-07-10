@@ -96,7 +96,12 @@ async function renderKeysList(containerId) {
   });
 }
 
-function createSiteRow(origin, alwaysAllow, silent) {
+// Light client-side charset gate for tunnel/jump values — the strict grammar
+// (per-segment hosts/ports, colon-count → -L/-D) lives server-side in
+// internal/terminal and runs at launch.
+var SSH_OPTION_CHARSET = /^[A-Za-z0-9.:@,_\s-]*$/;
+
+function createSiteRow(origin, alwaysAllow, silent, tunnels, jump) {
   var row = document.createElement('div');
   row.className = 'origin-row';
 
@@ -126,6 +131,45 @@ function createSiteRow(origin, alwaysAllow, silent) {
   silentInput.checked = !!silent;
   silentLabel.appendChild(silentInput);
   silentLabel.appendChild(document.createTextNode('silent'));
+
+  // Per-site tunnels (-L/-D) and jump hosts (-J), ssh:// rows only. The two
+  // inputs wrap onto a second line (flex-wrap) and hide behind a toggle.
+  var tunnelsInput = document.createElement('input');
+  tunnelsInput.type = 'text';
+  tunnelsInput.className = 'tunnels-input';
+  tunnelsInput.placeholder = 'tunnels: 8080:localhost:80, 1080  (port = SOCKS -D, port:host:port = -L; comma-separated)';
+  tunnelsInput.value = (tunnels || []).join(', ');
+
+  var jumpInput = document.createElement('input');
+  jumpInput.type = 'text';
+  jumpInput.className = 'jump-input';
+  jumpInput.placeholder = 'jump: user@bastion[:port][,hop2]';
+  jumpInput.value = jump || '';
+
+  [tunnelsInput, jumpInput].forEach(function (inp) {
+    inp.addEventListener('input', function () {
+      inp.classList.toggle('invalid', !SSH_OPTION_CHARSET.test(inp.value));
+    });
+  });
+
+  var optionsToggle = document.createElement('span');
+  optionsToggle.className = 'options-toggle';
+  optionsToggle.setAttribute('role', 'button');
+  optionsToggle.tabIndex = 0;
+  optionsToggle.textContent = 'tunnels';
+  optionsToggle.title = 'Per-site tunnels (-L/-D) and jump hosts (-J) for the terminal launcher';
+  var optionsOpen = !!((tunnels && tunnels.length) || jump);
+  function renderOptions() {
+    tunnelsInput.hidden = !optionsOpen;
+    jumpInput.hidden = !optionsOpen;
+    optionsToggle.classList.toggle('on', optionsOpen);
+  }
+  function toggleOptions() { optionsOpen = !optionsOpen; renderOptions(); }
+  optionsToggle.addEventListener('click', toggleOptions);
+  optionsToggle.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggleOptions(); }
+  });
+  renderOptions();
 
   var launchBtn = document.createElement('span');
   launchBtn.className = 'launch-row-btn';
@@ -157,6 +201,8 @@ function createSiteRow(origin, alwaysAllow, silent) {
     launchBtn.title = label;
     launchBtn.setAttribute('aria-label', label);
     sftpBtn.style.display = ssh ? '' : 'none';
+    optionsToggle.style.display = ssh ? '' : 'none';
+    if (!ssh) { optionsOpen = false; renderOptions(); }
   }
   function launch() {
     var t = normalizeSiteValue(originInput.value.trim());
@@ -238,9 +284,13 @@ function createSiteRow(origin, alwaysAllow, silent) {
   row.appendChild(originInput);
   row.appendChild(autoLabel);
   row.appendChild(silentLabel);
+  row.appendChild(optionsToggle);
   row.appendChild(launchBtn);
   row.appendChild(sftpBtn);
   row.appendChild(removeBtn);
+  // Second line (flex-wrap): the optional tunnel/jump inputs.
+  row.appendChild(tunnelsInput);
+  row.appendChild(jumpInput);
   return row;
 }
 
@@ -288,6 +338,20 @@ function collectSites(containerId) {
     var site = { origin: origin };
     if (autoInput && autoInput.checked) site.alwaysAllow = true;
     if (silentInput && silentInput.checked) site.silent = true;
+    if (t.scheme === 'ssh:') {
+      var tunnelsInput = row.querySelector('.tunnels-input');
+      var jumpInput = row.querySelector('.jump-input');
+      var tunnelsRaw = tunnelsInput ? tunnelsInput.value.trim() : '';
+      var jumpRaw = jumpInput ? jumpInput.value.trim() : '';
+      if (!SSH_OPTION_CHARSET.test(tunnelsRaw) || !SSH_OPTION_CHARSET.test(jumpRaw)) {
+        invalidLines.push(origin + ' — tunnels/jump: unsupported characters');
+        return;
+      }
+      // Specs can't legally contain whitespace, so strip it (forgiving paste).
+      var specs = tunnelsRaw.split(',').map(function (s) { return s.replace(/\s+/g, ''); }).filter(Boolean);
+      if (specs.length) site.tunnels = specs;
+      if (jumpRaw) site.jump = jumpRaw.replace(/\s+/g, '');
+    }
     out.push(site);
   });
 
@@ -308,16 +372,27 @@ function mergeSites(current, imported) {
     var t = normalizeSiteValue(s.origin.trim());
     if (!t) return; // skip entries that aren't http(s)/ssh — never import junk
     var origin = t.value;
+    // Tunnels/jump ride along sanitized to strings; on merge they're adopted
+    // only when the existing entry has none — an import never overwrites the
+    // user's local tunnel setup.
+    var impTunnels = Array.isArray(s.tunnels)
+      ? s.tunnels.filter(function (x) { return typeof x === 'string' && x; })
+      : [];
+    var impJump = typeof s.jump === 'string' ? s.jump : '';
     if (Object.prototype.hasOwnProperty.call(byOrigin, origin)) {
       var cur = out[byOrigin[origin]];
       var changed = false;
       if (s.alwaysAllow && !cur.alwaysAllow) { cur.alwaysAllow = true; changed = true; }
       if (s.silent && !cur.silent) { cur.silent = true; changed = true; }
+      if (impTunnels.length && !(cur.tunnels && cur.tunnels.length)) { cur.tunnels = impTunnels; changed = true; }
+      if (impJump && !cur.jump) { cur.jump = impJump; changed = true; }
       if (changed) updated++;
     } else {
       var site = { origin: origin };
       if (s.alwaysAllow) site.alwaysAllow = true;
       if (s.silent) site.silent = true;
+      if (impTunnels.length) site.tunnels = impTunnels;
+      if (impJump) site.jump = impJump;
       byOrigin[origin] = out.length;
       out.push(site);
       added++;
@@ -408,7 +483,7 @@ function renderSiteRows(sites, containerId) {
   container.innerHTML = '';
 
   (Array.isArray(sites) ? sites : []).forEach(function (site) {
-    container.appendChild(createSiteRow(site.origin, site.alwaysAllow, site.silent));
+    container.appendChild(createSiteRow(site.origin, site.alwaysAllow, site.silent, site.tunnels, site.jump));
   });
 
   if (container.children.length === 0) {

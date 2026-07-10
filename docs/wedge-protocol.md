@@ -78,9 +78,18 @@ agent-loaded key may sign for any site:
 "sites": [
   { "origin": "https://acme.example",   // or "ssh://user@host:port" (launcher)
     "alwaysAllow": false,   // skip the detail screen; presence tap still required
-    "silent": false }       // advanced: skip the presence tap too (per-site, warned)
+    "silent": false,        // advanced: skip the presence tap too (per-site, warned)
+    // ssh:// sites only — applied by the terminal launcher, ignored by SFTP:
+    "tunnels": ["8080:localhost:80", "1080"], // shape picks the flag:
+                            // [bind:]port → -D (SOCKS), [bind:]lport:host:hport → -L
+    "jump": "user@bastion:22" }  // ProxyJump hop list (comma-separated) → -J
 ]
 ```
+
+Tunnel specs and jump hops are strictly validated at launch
+(`terminal.TunnelFlag` / `terminal.ValidateJump`) with the same
+charset-limited, argv-only discipline as the target itself — never free text.
+v1 limitation: no IPv6 literals and no wildcard/empty bind addresses.
 
 The legacy `keyPath` + `allowedOrigins` + `originScopes` schema migrates to
 `sites` on load. Settings offers **Export…/Import…** of the sites list

@@ -226,6 +226,7 @@ button[aria-pressed="false"] {
 /* Origin rows */
 .origin-row {
   display: flex;
+  flex-wrap: wrap; /* tunnel/jump inputs wrap onto a second line */
   gap: 4px;
   margin-bottom: 4px;
   align-items: center;
@@ -238,6 +239,24 @@ button[aria-pressed="false"] {
 }
 .origin-row input.origin-input { flex: 2; }
 .origin-row input.port-input { flex: 0 0 60px; }
+/* Second line: per-site tunnels (-L/-D) and jump (-J) for ssh rows. */
+.origin-row input.tunnels-input { flex: 2 1 55%; }
+.origin-row input.jump-input { flex: 1 1 30%; }
+.origin-row input[hidden] { display: none; }
+.origin-row .options-toggle {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--subtext0);
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: underline dotted;
+  padding: 4px 2px;
+}
+.origin-row .options-toggle.on,
+.origin-row .options-toggle:hover,
+.origin-row .options-toggle:focus {
+  color: var(--accent);
+}
 .origin-row .auto-allow {
   display: inline-flex;
   align-items: center;

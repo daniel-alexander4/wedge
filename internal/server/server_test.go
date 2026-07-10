@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -201,12 +202,21 @@ func TestOpenSSH(t *testing.T) {
 			{Origin: "https://acme.example"},
 			{Origin: "ssh://dan@example.com:2222"},
 			{Origin: "ssh://-oProxyCommand=calc@evil"}, // hand-edited malicious entry
+			{Origin: "ssh://tunneled", Tunnels: []string{"8080:localhost:80", "1080"}, Jump: "dan@bastion:22"},
+			{Origin: "ssh://badtunnel", Tunnels: []string{"-oProxyCommand=calc"}}, // hand-edited malicious spec
 		}
 	})
 	s := New(m, fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("ok")}})
 	var got [3]string
+	var gotTunnels []string
+	var gotJump string
 	called := false
-	s.openSSH = func(u, h, p string) error { got = [3]string{u, h, p}; called = true; return nil }
+	s.openSSH = func(u, h, p string, tunnels []string, jump string) error {
+		got = [3]string{u, h, p}
+		gotTunnels, gotJump = tunnels, jump
+		called = true
+		return nil
+	}
 
 	// A configured ssh site opens with the parsed components.
 	w := serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://dan@example.com:2222"}`))
@@ -215,6 +225,29 @@ func TestOpenSSH(t *testing.T) {
 	}
 	if !called || got != [3]string{"dan", "example.com", "2222"} {
 		t.Errorf("openSSH got %v called=%v", got, called)
+	}
+	if len(gotTunnels) != 0 || gotJump != "" {
+		t.Errorf("plain site must launch without tunnels/jump, got %v %q", gotTunnels, gotJump)
+	}
+
+	// A site with tunnels and a jump host passes them through to the launcher.
+	called = false
+	w = serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://tunneled"}`))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tunneled site, got %d (%s)", w.Code, w.Body.String())
+	}
+	if !called || !reflect.DeepEqual(gotTunnels, []string{"8080:localhost:80", "1080"}) || gotJump != "dan@bastion:22" {
+		t.Errorf("tunneled site: openSSH got tunnels=%v jump=%q called=%v", gotTunnels, gotJump, called)
+	}
+
+	// A hand-edited malicious tunnel spec is rejected before launch.
+	called = false
+	w = serve(s, loopbackReq(http.MethodPost, "/api/ssh", `{"origin":"ssh://badtunnel"}`))
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 for malicious tunnel spec, got %d", w.Code)
+	}
+	if called {
+		t.Error("must not launch a site with an invalid tunnel spec")
 	}
 
 	// A non-configured ssh origin is rejected and never launched.

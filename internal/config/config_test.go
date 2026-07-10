@@ -46,6 +46,28 @@ func TestCreateLoadSaveRoundtrip(t *testing.T) {
 	}
 }
 
+func TestTunnelsJumpRoundtrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	m, err := NewManagerWithPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Update(func(c *Config) {
+		c.Sites = []Site{{Origin: "ssh://web1", Tunnels: []string{"8080:localhost:80", "1080"}, Jump: "dan@bastion:22"}}
+	})
+
+	m2, err := NewManagerWithPath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := m2.Get().Sites[0]
+	if len(s.Tunnels) != 2 || s.Tunnels[0] != "8080:localhost:80" || s.Tunnels[1] != "1080" || s.Jump != "dan@bastion:22" {
+		t.Errorf("tunnels/jump did not round-trip: %+v", s)
+	}
+}
+
 func TestMigratesLegacyConfig(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")

@@ -11,8 +11,9 @@ wedge is a single Go binary that serves its own UI over a loopback HTTP
 server and opens it in a chromeless browser window. Websites reach it through
 the `wedge://` protocol handler. It also doubles as a launcher: the same
 sites list opens web apps in your browser and `ssh://` hosts in your
-terminal or your file manager (SFTP), all keyed to the one agent keyring —
-and it can populate itself from the `Host` aliases in your `~/.ssh/config`.
+terminal or your file manager (SFTP), with per-site tunnels and jump hosts,
+all keyed to the one agent keyring — and it can populate itself from the
+`Host` aliases in your `~/.ssh/config`.
 
 ## Install
 
