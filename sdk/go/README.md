@@ -86,6 +86,12 @@ Runnable version: `examples/demo` —
 go run ./sdk/go/examples/demo --port 9413 --user you:$HOME/.ssh/id_ed25519.pub
 ```
 
+**Real-world integration: `examples/forgejo`** — "Sign in with wedge" for a
+stock Forgejo or Gitea, no fork required. A gateway uses this middleware for
+the wedge login, then reverse-proxies to Forgejo injecting the verified
+username as the trusted `X-WEBAUTH-USER` header. `docker compose up` gives you
+Forgejo-with-wedge-login; see [`examples/forgejo/README.md`](examples/forgejo/README.md).
+
 ## Deployment notes
 
 - **One process (the Go norm): nothing to configure** — the default

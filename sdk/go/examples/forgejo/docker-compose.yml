@@ -1,0 +1,52 @@
+# "Sign in with wedge" for Forgejo, end to end.
+#
+#   1. Put the public key you'll sign with at ./keys/dan.pub
+#   2. docker compose up --build
+#   3. In the wedge app, add http://127.0.0.1:3000 as a site (or let
+#      add-on-first-use prompt you), then open http://127.0.0.1:3000/wedge-login
+#
+# The gateway is the ONLY exposed port. Forgejo has no host port — it is
+# reachable solely through the gateway, and it trusts the gateway's identity
+# header only from the gateway's address on the compose network. Exposing
+# Forgejo directly, or widening REVERSE_PROXY_TRUSTED_PROXIES, reintroduces
+# the X-WEBAUTH-USER spoofing hole (GHSA-f75j-4cw6-rmx4).
+services:
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:9
+    environment:
+      # The public origin is the gateway, so Forgejo generates correct links.
+      FORGEJO__server__ROOT_URL: http://127.0.0.1:3000/
+      FORGEJO__service__ENABLE_REVERSE_PROXY_AUTHENTICATION: "true"
+      FORGEJO__service__ENABLE_REVERSE_PROXY_AUTO_REGISTRATION: "true"
+      # Reference-proxy identity headers (gateway sets X-WEBAUTH-USER).
+      FORGEJO__security__REVERSE_PROXY_AUTHENTICATION_USER: X-WEBAUTH-USER
+      # Trust the identity header only from the gateway service. Never widen
+      # this to 0.0.0.0/0 — that lets any client impersonate any user.
+      FORGEJO__security__REVERSE_PROXY_TRUSTED_PROXIES: gateway
+      # First run: let Forgejo skip its web installer.
+      FORGEJO__security__INSTALL_LOCK: "true"
+    volumes:
+      - forgejo-data:/data
+    networks: [wedge]
+    # NOTE: deliberately no `ports:` — Forgejo is not reachable from the host.
+
+  gateway:
+    build:
+      context: ../../../..            # the wedge module root
+      dockerfile: sdk/go/examples/forgejo/Dockerfile
+    command:
+      - --addr=0.0.0.0:3000
+      - --origin=http://127.0.0.1:3000
+      - --upstream=http://forgejo:3000
+      - --user=dan:/keys/dan.pub
+    volumes:
+      - ./keys:/keys:ro
+    ports:
+      - "127.0.0.1:3000:3000"          # the only exposed surface
+    networks: [wedge]
+    depends_on: [forgejo]
+
+networks:
+  wedge:
+volumes:
+  forgejo-data:
