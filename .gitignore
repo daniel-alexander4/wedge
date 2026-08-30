@@ -16,3 +16,6 @@ sdk/python/build/
 
 # Playwright MCP scratch (screenshots, snapshots, console logs)
 .playwright-mcp/
+
+# Claude Code local context — never committed
+.claude/
