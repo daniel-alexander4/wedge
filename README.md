@@ -1,7 +1,6 @@
 # wedge
 
-> **Proof of concept.** wedge shows SSH-key sign-in for the web working end to end, but it is not
-> production software. Don't rely on it to protect real accounts.
+> **Proof of concept.** wedge shows SSH-key sign-in for the web working end to end.
 
 **SSH-key web authentication.** wedge lets you sign in to websites with the
 SSH keys already in your ssh-agent: a site shows a "Sign in with wedge"
